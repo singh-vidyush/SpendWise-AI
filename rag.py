@@ -305,5 +305,6 @@ def show_all_profiles():
     print(data["documents"])
 
 if __name__ == "__main__":
-
+    print("Ingesting financial knowledge base...")
+    ingest_knowledge()
     show_all_profiles()

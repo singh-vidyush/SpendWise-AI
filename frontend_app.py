@@ -1187,7 +1187,6 @@ def review_chat():
 # ADVISOR CHAT
 # ============================================================
 def advisor_response(question):
-
     print("Sending question:", question)
 
     response = requests.post(
@@ -1198,82 +1197,57 @@ def advisor_response(question):
         }
     )
 
-    print("Status Code:", response.status_code)
-    print("Response:", response.text)
-
-    # If backend crashed
     if response.status_code != 200:
         return f"Backend Error: {response.text}"
 
     data = response.json()
 
-    print("Parsed Data:")
-    print(data)
-
-    # If API returned failure
     if not data.get("success", False):
-        return data.get(
-            "message",
-            "Something went wrong."
-        )
+        return data.get("message", "Something went wrong.")
+
+    resp_text = data.get("response_text", "").strip()
+
+    if resp_text:
+        return resp_text
 
     answer = ""
-
-    calculations = data.get(
-        "calculations",
-        {}
-    )
-
-    recommendations = data.get(
-        "recommendations",
-        []
-    )
-
-    market_insights = data.get(
-        "market_insights",
-        ""
-    )
+    calculations = data.get("calculations", {})
+    recommendations = data.get("recommendations", [])
+    tradeoff_analysis = data.get("tradeoff_analysis", [])
+    market_insights = data.get("market_insights", "")
 
     if calculations:
-
-        answer += "📊 Financial Analysis\n\n"
-
+        answer += "📊 **Financial Analysis**\n\n"
         for key, value in calculations.items():
-            answer += f"• {key}: {value}\n"
-
+            answer += f"• **{key}**: {value}\n"
         answer += "\n"
 
     if recommendations:
-
-        answer += "✅ Recommendations\n\n"
-
-        for i, rec in enumerate(recommendations,start=1):
-
-            # Gemini returned structured content
+        answer += "✅ **Recommendations**\n\n"
+        for i, rec in enumerate(recommendations, start=1):
             if isinstance(rec, dict):
-
-                rec_text = rec.get(
-                    "text",
-                    str(rec)
-                )
-
+                rec_text = rec.get("action", rec.get("text", str(rec)))
             else:
-
                 rec_text = str(rec)
+            answer += f"{i}. {rec_text}\n"
+        answer += "\n"
 
-            answer += f". {rec_text}\n"
-
+    if tradeoff_analysis:
+        answer += "⚖️ **Trade-Off Analysis**\n\n"
+        for i, item in enumerate(tradeoff_analysis, start=1):
+            if isinstance(item, dict):
+                strat = item.get("strategy", f"Option {i}")
+                bens = item.get("benefits", "")
+                answer += f"• **{strat}**: {bens}\n"
+            else:
+                answer += f"• {item}\n"
         answer += "\n"
 
     if market_insights:
-
-        answer += (
-            "🌍 Market Insights\n\n"
-        )
-
+        answer += "🌍 **Market Insights**\n\n"
         answer += market_insights[:1000]
 
-    return answer
+    return answer or "Thank you for your question! Your profile has been updated."
 
 
 
