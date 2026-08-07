@@ -12,65 +12,62 @@ MERMAID_DEFINITION = """
 flowchart TD
     UI([Streamlit UI\\nProfile Form + Chat])
 
-    UI -->|form save| SQ[(SQLite\\nUserProfile · Liability)]
-    UI -->|embedded text| VDB[(ChromaDB\\nuser_profiles)]
-    UI -->|chat query| RT
+    UI -->|JSON profile| API([FastAPI Backend])
+    API -->|raw JSON| IA[intake_agent\\nValidate · Normalize · Save]
+    IA -->|upsert| VDB[(ChromaDB\\nuser_profiles)]
+    IA -->|save| SQ[(SQLite\\nspendwise_users.db)]
+    IA --> IR[intent_router]
 
-    subgraph PIPELINE [LangGraph Pipeline]
-        RT([router\\nintent_router])
-        RT -->|planning keywords| RR
-        RT -->|follow-up| CR
+    subgraph PIPELINE [LangGraph Multi-Agent Architecture]
+        IR -->|conversational| CR[conversational_reply_agent\\nLLM + Chat History + RAG]
 
-        subgraph REACT [ReAct Pattern]
-            RR[rag_react_agent\\nThink: which topics?\\nAct: targeted ChromaDB queries\\nObserve: deduplicate]
-            MR[market_react_agent\\nThink: which market topics?\\nAct: targeted Tavily searches\\nObserve: labelled snippets]
+        subgraph PLANNING_FLOW [Financial Planning Pipeline]
+            subgraph REACT [ReAct Pattern]
+                RR[rag_react_agent\\nThink: targets?\\nAct: ChromaDB query\\nObserve: deduplicate]
+                MR[market_react_agent\\nThink: market info?\\nAct: Tavily search\\nObserve: market snippets]
+            end
+
+            IR -->|financial analysis / report| RR
+            RR --> MR
+
+            subgraph DET [Deterministic Calculations]
+                CA[calculator_agent\\nSurplus · Savings Rate · DTI\\nTax · Net Worth · Emergency Fund]
+            end
+
+            MR --> CA
+
+            subgraph REF [Reflection Pattern]
+                AD[recommendation_agent\\nDRAFT: 5 recommendations\\nREFLECT: affordable & feasible?]
+            end
+
+            CA --> AD
+
+            subgraph TRADE [Trade-off Analysis]
+                TA[trade_off_agent\\nAlternatives · Impact\\nBenefits · Drawbacks]
+            end
+
+            AD --> TA
+
+            subgraph CRIT [Critic Review Loop - max 2x]
+                CK{critic_agent\\nAPPROVED?}
+            end
+
+            TA --> CK
+            CK -->|APPROVED| RP[report_agent\\nGenerate PDF Report\\nPrepare Dashboard Data]
+            CK -->|critique + guidance| AD
         end
-
-        RR --> MR
-
-        subgraph DET [Deterministic Math]
-            CA[calculator_agent\\nSurplus · Tax · EMI ratio\\nSIP targets]
-            GA[goals_agent\\nFV = PV x 1.06n\\nSIP per goal · feasibility]
-        end
-
-        MR --> CA
-        CA --> GA
-
-        subgraph CAR [Constraint-Aware Reasoning]
-            TA[trade_off_agent\\nDetect shortfall goals\\nCategory hints injected:\\n  vehicle: 2nd-hand / CNG\\n  education: public college\\n  home: smaller city\\nGenerate 2 alternatives + SIPs]
-        end
-
-        GA --> TA
-
-        subgraph REF [Reflection Pattern]
-            AD[advisor_agent\\nDRAFT: 6 recs with trade-offs\\nREFLECT: specific? feasible?\\nFINALISE: revise if fails]
-        end
-
-        TA --> AD
-
-        subgraph CRIT [Critic Loop - max 2x]
-            CK{critic_agent\\nAPPROVED?}
-        end
-
-        AD --> CK
-        CK -->|APPROVED| RP
-        CK -->|critique + guidance| AD
-
-        RP[report_agent\\nPDF via ReportLab:\\n  Financial summary\\n  Goals table\\n  Trade-off alternatives\\n  Recommendations]
-
-        CR[conversational_reply\\nLLM + full chat history\\n+ prior calc context]
     end
 
-    RP -->|PDF| DL([Download PDF])
+    CR --> CHAT([Conversational Response])
+    RP -->|PDF| DL([Download PDF Report])
     RP -->|summary| VDB2[(ChromaDB\\npast_reports)]
-    CR --> CHAT([Chat response])
-    RP --> DASH([Dashboard\\nPie · Goals chart\\nTrade-offs table])
+    RP --> DASH([Dashboard KPIs & Charts])
 
     subgraph VDB_GROUP [ChromaDB Collections]
         VDB
         VDB2
-        KC[(financial_knowledge\\nTax · SIP · Debt\\nInsurance · Inflation)]
-        MD[(market_data\\nTavily snippets)]
+        KC[(financial_knowledge)]
+        MD[(market_data)]
         EH[(expense_history)]
     end
 
@@ -80,8 +77,8 @@ flowchart TD
 
     style REACT fill:#EBF5FB,stroke:#2E86C1
     style DET  fill:#EAFAF1,stroke:#1E8449
-    style CAR  fill:#FEF9E7,stroke:#D4AC0D
     style REF  fill:#F4ECF7,stroke:#7D3C98
+    style TRADE fill:#FEF9E7,stroke:#D4AC0D
     style CRIT fill:#FDEDEC,stroke:#CB4335
     style PIPELINE fill:#FDFEFE,stroke:#717D7E
     style VDB_GROUP fill:#F8F9FA,stroke:#AEB6BF

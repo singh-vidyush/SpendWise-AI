@@ -1,32 +1,24 @@
-from fastapi import FastAPI
+import json
+import logging
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Dict, Any, Optional
 
-from database import (
-    add_user,
-    verify_user,
-    get_user_by_email
-)
-
+from database import add_user, verify_user, get_user_by_email
 from db.vector_store import (
     upsert_user_profile,
-    user_profiles_collection
+    get_user_profile,
+    profile_exists,
 )
+from agents.graph import run_planning_pipeline
 
-from agents.graph import (
-    run_planning_pipeline
-)
-
-import json
-
+logger = logging.getLogger(__name__)
 
 # =====================================================
-# APP
+# APP INITIATION
 # =====================================================
-
-app = FastAPI(
-    title="SpendWise API"
-)
+app = FastAPI(title="SpendWise API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,10 +28,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =====================================================
-# REQUEST MODELS
-# =====================================================
 
+# =====================================================
+# REQUEST SCHEMAS
+# =====================================================
 class SignupRequest(BaseModel):
     username: str
     email: str
@@ -53,7 +45,7 @@ class LoginRequest(BaseModel):
 
 class SaveProfileRequest(BaseModel):
     user_id: int
-    profile: dict
+    profile: Dict[str, Any]
 
 
 class ChatRequest(BaseModel):
@@ -62,271 +54,105 @@ class ChatRequest(BaseModel):
 
 
 # =====================================================
-# HELPERS
+# ROUTES
 # =====================================================
-
-def profile_exists(user_id):
-
-    col = user_profiles_collection()
-
-    result = col.get(
-        ids=[str(user_id)]
-    )
-
-    return len(result["ids"]) > 0
-
-
-def get_profile(user_id):
-
-    col = user_profiles_collection()
-
-    result = col.get(
-        ids=[str(user_id)]
-    )
-
-    if not result["documents"]:
-        return None
-
-    return json.loads(
-        result["documents"][0]
-    )
-
-
-# =====================================================
-# ROOT
-# =====================================================
-
 @app.get("/")
 def home():
-
-    return {
-        "message": "SpendWise Backend Running"
-    }
+    return {"message": "SpendWise Backend API Running"}
 
 
 @app.get("/health")
 def health():
+    return {"status": "healthy"}
 
-    return {
-        "status": "healthy"
-    }
-
-
-# =====================================================
-# SIGNUP
-# =====================================================
 
 @app.post("/signup")
 def signup(data: SignupRequest):
-
-    existing = get_user_by_email(
-        data.email.lower()
-    )
-
+    existing = get_user_by_email(data.email.lower())
     if existing:
+        return {"success": False, "message": "Email already exists"}
 
-        return {
-            "success": False,
-            "message": "Email already exists"
-        }
+    user_id = add_user(data.username, data.email.lower(), data.password)
+    return {"success": True, "user_id": user_id}
 
-    user_id = add_user(
-        data.username,
-        data.email.lower(),
-        data.password
-    )
-
-    return {
-        "success": True,
-        "user_id": user_id
-    }
-
-
-# =====================================================
-# LOGIN
-# =====================================================
 
 @app.post("/login")
 def login(data: LoginRequest):
-
-    user = verify_user(
-        data.email.lower(),
-        data.password
-    )
-
+    user = verify_user(data.email.lower(), data.password)
     if not user:
-
-        return {
-            "success": False,
-            "message": "Invalid credentials"
-        }
+        return {"success": False, "message": "Invalid email or password"}
 
     user_id = user[0]
     username = user[1]
+    has_profile = profile_exists(str(user_id))
 
     return {
         "success": True,
         "user_id": user_id,
         "username": username,
-        "profile_exists": profile_exists(
-            user_id
-        )
+        "profile_exists": has_profile,
     }
 
-
-# =====================================================
-# SAVE PROFILE
-# =====================================================
 
 @app.post("/save-profile")
-def save_profile(
-    request: SaveProfileRequest
-):
+def save_profile(request: SaveProfileRequest):
+    try:
+        user_id_str = str(request.user_id)
+        saved_json = upsert_user_profile(user_id_str, request.profile)
+        return {"success": True, "profile": json.loads(saved_json)}
+    except Exception as e:
+        logger.error(f"Error saving profile: {e}")
+        return {"success": False, "message": str(e)}
 
-    profile_json = json.dumps(
-        request.profile,
-        indent=2
-    )
-
-    upsert_user_profile(
-        str(request.user_id),
-        profile_json,
-        {
-            "user_id": request.user_id
-        }
-    )
-
-    return {
-        "success": True
-    }
-
-
-# =====================================================
-# PROFILE EXISTS
-# =====================================================
 
 @app.get("/profile-exists/{user_id}")
 def check_profile(user_id: int):
+    return {"exists": profile_exists(str(user_id))}
 
-    return {
-        "exists": profile_exists(
-            user_id
-        )
-    }
-
-
-# =====================================================
-# GET PROFILE
-# =====================================================
 
 @app.get("/profile/{user_id}")
 def fetch_profile(user_id: int):
+    profile = get_user_profile(str(user_id))
+    return {"profile": profile}
 
-    profile = get_profile(
-        user_id
-    )
-
-    return {
-        "profile": profile
-    }
-
-
-# =====================================================
-# CHAT
-# =====================================================
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-
-    profile = get_profile(
-        request.user_id
-    )
+    user_id_str = str(request.user_id)
+    profile = get_user_profile(user_id_str)
 
     if not profile:
+        return {"success": False, "message": "Financial profile not found. Please complete profile setup."}
+
+    fin = profile.get("financial_profile", {})
+    debt = fin.get("debt_details", {})
+
+    try:
+        state = run_planning_pipeline(
+            user_id=user_id_str,
+            user_name=profile.get("user_name", "User"),
+            person_type=fin.get("persona", "Salaried"),
+            monthly_income=float(fin.get("monthly_income", 0.0)),
+            house_emi=float(debt.get("monthly_emi", 0.0)),
+            insurance_premium=0.0,
+            health_expenses=0.0,
+            other_liabilities=[],
+            age=30.0,
+            chat_query=request.message,
+            chat_history=[],
+            profile_dict=profile,
+        )
 
         return {
-            "success": False,
-            "message":
-                "Financial profile not found."
+            "success": True,
+            "response_text": state.get("response_text", ""),
+            "intent": state.get("intent", "financial_analysis"),
+            "recommendations": state.get("recommendations", []),
+            "tradeoff_analysis": state.get("tradeoff_analysis", []),
+            "calculations": state.get("financial_metrics", {}),
+            "market_insights": state.get("market_context", ""),
+            "pdf_path": state.get("pdf_path", ""),
         }
-
-    answers = profile[
-        "financial_profile"
-    ]
-
-    debt = answers.get(
-        "debt_details",
-        {}
-    )
-
-    state = run_planning_pipeline(
-
-        user_id=str(
-            request.user_id
-        ),
-
-        user_name=profile.get(
-            "user_name",
-            "User"
-        ),
-
-        person_type=answers.get(
-            "persona",
-            "Salaried"
-        ),
-
-        monthly_income=float(
-            answers.get(
-                "monthly_income",
-                0
-            )
-        ),
-
-        house_emi=float(
-            debt.get(
-                "monthly_emi",
-                0
-            )
-        ),
-
-        insurance_premium=0,
-
-        health_expenses=0,
-
-        other_liabilities=[],
-
-        age=30,
-
-        chat_query=request.message,
-
-        chat_history=[]
-    )
-
-    return {
-
-        "success": True,
-
-        "recommendations":
-            state.get(
-                "recommendations",
-                []
-            ),
-
-        "calculations":
-            state.get(
-                "calculations",
-                {}
-            ),
-
-        "market_insights":
-            state.get(
-                "market_insights",
-                ""
-            ),
-
-        "pdf_path":
-            state.get(
-                "pdf_path",
-                ""
-            )
-    }
+    except Exception as e:
+        logger.error(f"Error executing chat pipeline: {e}")
+        return {"success": False, "message": f"Pipeline Error: {str(e)}"}
