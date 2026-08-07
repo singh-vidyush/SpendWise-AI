@@ -1,0 +1,47 @@
+# API
+fastapi
+uvicorn
+pydantic
+python-multipart
+
+# Frontend
+streamlit
+requests
+
+# Environment
+python-dotenv
+
+# LLM
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+langgraph
+
+# Embeddings
+langchain-huggingface
+sentence-transformers
+
+# Vector DB
+chromadb
+
+# Document Loading
+pypdf
+docx2txt
+unstructured
+
+# Web Search
+tavily-python
+
+# Database
+sqlalchemy
+
+# PDF Generation
+reportlab
+
+# Charts
+matplotlib
+
+# Utilities
+numpy
+pandas
