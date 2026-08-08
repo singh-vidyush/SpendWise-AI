@@ -74,14 +74,15 @@ def past_reports_collection():
 # ---------------------------------------------------------------------------
 # Schema Validation and Normalization
 # ---------------------------------------------------------------------------
-def normalize_user_profile(raw_profile: Dict[str, Any]) -> Dict[str, Any]:
+# user normalization can be removed as its in frontend
+# def normalize_user_profile(raw_profile: Dict[str, Any]) -> Dict[str, Any]:
     """
     Validates and normalizes frontend user profile JSON.
     Handles missing or ill-formatted fields safely.
     """
     if not isinstance(raw_profile, dict):
         raw_profile = {}
-
+        #can be changes based on frontend input variable 
     user_name = raw_profile.get("user_name") or raw_profile.get("name") or "User"
     user_email = raw_profile.get("user_email") or raw_profile.get("email") or ""
 
@@ -142,8 +143,8 @@ def upsert_user_profile(user_id, profile_data, session_id="default"):
         Normalizes profile, creates embeddings and metadata, stores in ChromaDB.
         Supports update and versioning.
     """
-    profile = normalize_user_profile(profile_data)
-    profile_json = json.dumps(profile)
+    # profile = normalize_user_profile(profile_data)
+    profile_json = json.dumps(profile_data)
 
     try:
         user_profiles_collection().upsert(
@@ -177,47 +178,11 @@ def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
 
 
 def profile_exists(user_id: str) -> bool:
-    col = user_profiles_collection()
     try:
-        res = col.get(ids=[f"user_{user_id}"])
-        if res and res.get("ids") and len(res["ids"]) > 0:
-            return True
-        res = col.get(ids=[str(user_id)])
-        return len(res.get("ids", [])) > 0
+        col = user_profiles_collection()
+        return bool(col.get(ids=[f"user_{user_id}"]).get("ids"))
     except Exception:
         return False
-
-
-# # ---------------------------------------------------------------------------
-# # Helper: Expense History Ops
-# # ---------------------------------------------------------------------------
-# def add_expense_history(user_id: str, month: str, category: str, amount: float, notes: str = ""):
-#     col = expense_history_collection()
-#     doc_id = f"exp_{user_id}_{month}_{category}"
-#     text = f"User {user_id} spent ₹{amount:.2f} on {category} in {month}. Notes: {notes}"
-#     metadata = {
-#         "user_id": str(user_id),
-#         "month": month,
-#         "category": category,
-#         "amount": amount,
-#     }
-#     try:
-#         embed = get_embed_model().embed_query(text)
-#         col.upsert(ids=[doc_id], documents=[text], embeddings=[embed], metadatas=[metadata])
-#     except Exception as e:
-#         logger.error(f"Error adding expense history: {e}")
-
-
-# def get_expense_history(user_id: str, n_results: int = 5) -> List[str]:
-#     col = expense_history_collection()
-#     try:
-#         embed = get_embed_model().embed_query(f"expense history for user {user_id}")
-#         res = col.query(query_embeddings=[embed], n_results=n_results, where={"user_id": str(user_id)})
-#         if res and res.get("documents") and len(res["documents"]) > 0:
-#             return res["documents"][0]
-#     except Exception as e:
-#         logger.error(f"Error fetching expense history: {e}")
-#     return []
 
 
 # ---------------------------------------------------------------------------
@@ -251,17 +216,6 @@ def add_past_report(user_id: str, report_id: str, summary: str, filepath: str, m
     except Exception as e:
         logger.error(f"Error storing past report: {e}")
 
-
-def get_past_reports(user_id: str, n_results: int = 3) -> List[str]:
-    col = past_reports_collection()
-    try:
-        embed = get_embed_model().embed_query(f"past financial report for user {user_id}")
-        res = col.query(query_embeddings=[embed], n_results=n_results, where={"user_id": str(user_id)})
-        if res and res.get("documents") and len(res["documents"]) > 0:
-            return res["documents"][0]
-    except Exception as e:
-        logger.error(f"Error querying past reports: {e}")
-    return []
 
 
 # ---------------------------------------------------------------------------

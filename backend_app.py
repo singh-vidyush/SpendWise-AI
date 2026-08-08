@@ -13,21 +13,12 @@ from db.vector_store import (
 )
 from agents.graph import run_planning_pipeline
 
-logger = logging.getLogger(__name__)
 
-# =====================================================
-# APP INITIATION
-# =====================================================
+
+# # =====================================================
+# # APP INITIATION
+# # =====================================================
 app = FastAPI(title="SpendWise API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # =====================================================
 # REQUEST SCHEMAS
@@ -60,10 +51,6 @@ class ChatRequest(BaseModel):
 def home():
     return {"message": "SpendWise Backend API Running"}
 
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
 
 
 @app.post("/signup")
@@ -101,10 +88,9 @@ def save_profile(request: SaveProfileRequest):
         saved_json = upsert_user_profile(user_id_str, request.profile)
         return {"success": True, "profile": json.loads(saved_json)}
     except Exception as e:
-        logger.error(f"Error saving profile: {e}")
         return {"success": False, "message": str(e)}
 
-
+#check wheather both below user id routing used if not remove
 @app.get("/profile-exists/{user_id}")
 def check_profile(user_id: int):
     return {"exists": profile_exists(str(user_id))}
@@ -121,9 +107,6 @@ def chat(request: ChatRequest):
     user_id_str = str(request.user_id)
     profile = get_user_profile(user_id_str)
 
-    if not profile:
-        return {"success": False, "message": "Financial profile not found. Please complete profile setup."}
-
     fin = profile.get("financial_profile", {})
     debt = fin.get("debt_details", {})
 
@@ -134,18 +117,7 @@ def chat(request: ChatRequest):
             person_type=fin.get("persona", "Salaried"),
             monthly_income=float(fin.get("monthly_income", 0.0)),
             house_emi=float(debt.get("monthly_emi", 0.0)),
-            
-            #hardcoded...let's see if we can remove it or not
-            insurance_premium=0.0,
-            health_expenses=0.0,
-            other_liabilities=[],
-            age=30.0,
-
             chat_query=request.message,
-
-            #no chat history is passing
-            chat_history=[],
-
             profile_dict=profile,
         )
 
@@ -160,5 +132,4 @@ def chat(request: ChatRequest):
             "pdf_path": state.get("pdf_path", ""),
         }
     except Exception as e:
-        logger.error(f"Error executing chat pipeline: {e}")
         return {"success": False, "message": f"Pipeline Error: {str(e)}"}

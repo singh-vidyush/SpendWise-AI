@@ -15,7 +15,6 @@ Agents & Nodes:
 """
 
 import json
-import logging
 from typing import TypedDict, Annotated, List, Dict, Any, Optional
 import operator
 
@@ -32,7 +31,6 @@ from db.vector_store import (
     financial_knowledge_collection,
 )
 
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +62,7 @@ class FinancialPlanningState(TypedDict):
 
     pdf_path: str
     response_text: str
-    chat_history: List[BaseMessage]
+
 
 
 # ---------------------------------------------------------------------------
@@ -539,23 +537,14 @@ def run_planning_pipeline(
     person_type: str,
     monthly_income: float,
     house_emi: float,
-    insurance_premium: float = 0.0,
-    health_expenses: float = 0.0,
-    other_liabilities: list = None,
-    age: float = 30.0,
     chat_query: str = "",
-    chat_history: Optional[List[BaseMessage]] = None,
     profile_dict: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
 
     user_data = {
         "monthly_income": monthly_income,
         "house_emi": house_emi,
-        "insurance_premium": insurance_premium,
-        "health_expenses": health_expenses,
-        "other_liabilities": other_liabilities or [],
         "person_type": person_type,
-        "age": age,
     }
 
     initial_state: FinancialPlanningState = {
@@ -577,7 +566,6 @@ def run_planning_pipeline(
         "revision_count": 0,
         "pdf_path": "",
         "response_text": "",
-        "chat_history": chat_history or [],
     }
 
     graph = get_graph()
