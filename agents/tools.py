@@ -38,28 +38,6 @@ logger = logging.getLogger(__name__)
 
 
 @tool
-def rag_tool(query: str, collection_name: str = "financial_knowledge") -> str:
-    """
-    Retrieve relevant financial knowledge from ChromaDB.
-    collection_name options: financial_knowledge | expense_history | market_data | past_reports
-    """
-    collection_map = {
-        "financial_knowledge": financial_knowledge_collection,
-        "expense_history": expense_history_collection,
-        "market_data": market_data_collection,
-        "past_reports": past_reports_collection,
-    }
-
-    get_col = collection_map.get(collection_name, financial_knowledge_collection)
-    docs = query_collection(get_col(), query, n_results=5)
-
-    if not docs:
-        return "No relevant documents found in the knowledge base."
-
-    return "\n\n---\n\n".join(docs)
-
-
-@tool
 def calculation_tool(user_data: str) -> str:
     """
     Perform complete financial calculations.

@@ -52,7 +52,7 @@ class FinancialPlanningState(TypedDict):
     profile: Dict[str, Any]
 
     query: str
-    intent: str  # conversational | financial_analysis | report_generation | follow_up
+    intent: str  # conversational | financial_analysis 
 
     retrieved_context: Dict[str, Any]
     market_context: str
@@ -97,136 +97,67 @@ def extract_response_text(content: Any) -> str:
 # ---------------------------------------------------------------------------
 # Node 1: Intake Agent
 # ---------------------------------------------------------------------------
-def intake_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    """
-    Receives user profile, normalizes data, and stores via vector_store.py before planning.
-    """
-    user_id = state.get("user_id", "default_user")
-    session_id = state.get("session_id", "default_session")
+def intake_agent(state):
+    profile = state.get("profile") or get_user_profile(state["user_id"]) or {}
 
-    existing_profile = state.get("profile") or {}
-    if not existing_profile:
-        try:
-            fetched = get_user_profile(user_id)
-            if fetched:
-                existing_profile = fetched
-        except Exception as e:
-            logger.error(f"Error reading profile in intake_agent: {e}")
-
-    # Build raw profile dict from state if not already filled
-    if not existing_profile.get("financial_profile"):
-        user_data = json.loads(state.get("user_data_json", "{}")) if state.get("user_data_json") else {}
-        existing_profile = {
-            "user_name": state.get("user_name", "User"),
-            "user_email": "",
-            "financial_profile": {
-                "persona": state.get("person_type", "Salaried"),
-                "monthly_income": user_data.get("monthly_income", 0.0),
-                "essential_expenses": user_data.get("essential_expenses", 0.0),
-                "non_essential_expenses": user_data.get("non_essential_expenses", 0.0),
-                "current_savings": user_data.get("current_savings", 0.0),
-                "debt_details": {
-                    "has_debt": bool(user_data.get("house_emi", 0) > 0 or user_data.get("other_liabilities")),
-                    "debt_type": "Loan/EMI",
-                    "total_outstanding_debt": 0.0,
-                    "monthly_emi": float(user_data.get("house_emi", 0.0)),
-                },
-                "investments": [],
-                "monthly_saving_investment": 0.0,
-            }
-        }
-
-    # Pass through vector_store.py
-    normalized_json = upsert_user_profile(user_id, existing_profile, session_id=session_id)
-    normalized_dict = json.loads(normalized_json)
-
-    fin = normalized_dict.get("financial_profile", {})
-    user_data_json = json.dumps({
-        "monthly_income": fin.get("monthly_income", 0.0),
-        "essential_expenses": fin.get("essential_expenses", 0.0),
-        "non_essential_expenses": fin.get("non_essential_expenses", 0.0),
-        "current_savings": fin.get("current_savings", 0.0),
-        "house_emi": fin.get("debt_details", {}).get("monthly_emi", 0.0),
-        "insurance_premium": 0.0,
-        "health_expenses": 0.0,
-        "other_liabilities": [],
-        "person_type": fin.get("persona", "Salaried"),
-        "debt_details": fin.get("debt_details", {}),
-    })
+    profile = json.loads(
+        upsert_user_profile(
+            state["user_id"],
+            profile,
+            state["session_id"]
+        )
+    )
 
     return {
-        "profile": normalized_dict,
-        "user_data_json": user_data_json,
-        "messages": [AIMessage(content="[Intake Agent] User profile normalized and persisted in vector store.")],
+        "profile": profile,
+        "messages": [
+            AIMessage(content="Profile processed")
+        ],
     }
 
 
 # ---------------------------------------------------------------------------
 # Node 2: Intent Router
 # ---------------------------------------------------------------------------
-def intent_router(state: FinancialPlanningState) -> Dict[str, Any]:
-    """
-    Classifies user request into:
-    A. conversational
-    B. financial_analysis
-    C. report_generation
-    D. follow_up
-    """
-    query = state.get("query", "").strip()
-    query_lower = query.lower()
+def intent_router(state):
+    query = state.get("query", "").lower()
 
-    # Rule-based heuristics for quick and accurate intent classification
-    conversational_triggers = [
-        "what is", "what are", "define", "explain", "how does", "what does",
-        "hi", "hello", "hey", "tell me about", "difference between", "meaning of",
-        "concept of", "is it good to", "can you explain"
-    ]
-
-    report_triggers = [
-        "generate report", "download pdf", "create report", "make pdf", "full report", "pdf report"
-    ]
-
-    analysis_triggers = [
-        "analyze my", "my budget", "my expenses", "where am i overspending",
-        "how much should i save", "should i clear debt", "my savings rate", "my dti"
-    ]
-
-    if any(trigger in query_lower for trigger in report_triggers):
-        intent = "report_generation"
-    elif any(query_lower.startswith(trigger) or f" {trigger} " in f" {query_lower} " for trigger in conversational_triggers) and not any(trigger in query_lower for trigger in analysis_triggers):
+    # Fast rule-based classification
+    if query.startswith(
+        ("what is", "what are", "define", "explain", "how does", "tell me about")
+    ):
         intent = "conversational"
+
+    elif any(x in query for x in [
+        "my budget", "my expenses", "my savings",
+        "my dti", "analyze my", "should i"
+    ]):
+        intent = "financial_analysis"
+
+    # LLM fallback for ambiguous queries
     else:
-        llm = _llm()
-        prompt = f"""
-You are a financial intent classifier.
-User query: "{query}"
-
-Classify into exactly ONE category:
-- conversational: General questions, educational questions, definitions ("What is SIP?", "How does mutual fund work?").
-- financial_analysis: Requesting personalized analysis of user's income, budget, expenses, debt, or savings.
-- report_generation: Explicit request for generating or downloading a report/PDF.
-- follow_up: Follow-up question on past plan or calculations.
-
-Return ONLY the category name.
-"""
         try:
-            res = llm.invoke([HumanMessage(content=prompt)])
-            raw_text = extract_response_text(res.content).strip().lower()
-            if "conversational" in raw_text:
+            prompt = f"""
+            Classify the query into exactly one:
+            conversational,
+            financial_analysis
+
+            Query: {query}
+            """
+
+            response = _llm().invoke(
+                [HumanMessage(content=prompt)]
+            ).content.lower()
+
+            if "conversational" in response:
                 intent = "conversational"
-            elif "report" in raw_text:
-                intent = "report_generation"
-            elif "follow" in raw_text:
-                intent = "follow_up"
             else:
                 intent = "financial_analysis"
+
         except Exception:
             intent = "financial_analysis"
 
-    return {
-        "intent": intent,
-        "messages": [AIMessage(content=f"[Intent Router] Intent classified as: {intent}")],
-    }
+    return {"intent": intent}
 
 
 def route_decision(state: FinancialPlanningState) -> str:
@@ -239,117 +170,113 @@ def route_decision(state: FinancialPlanningState) -> str:
 # ---------------------------------------------------------------------------
 # Node 3: Conversational Reply Agent
 # ---------------------------------------------------------------------------
-def conversational_reply_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    """
-    Handles conversational requests using history and profile context without full pipeline execution.
-    """
-    llm = _llm()
+def conversational_reply_agent(state):
     query = state.get("query", "")
+
     profile = state.get("profile", {})
     fin = profile.get("financial_profile", {})
 
-    # RAG knowledge lookup
-    knowledge = query_collection(financial_knowledge_collection(), query, n_results=3)
-    knowledge_text = "\n".join(knowledge)
+    context = "\n".join(
+        query_collection(
+            financial_knowledge_collection(),
+            query,
+            3
+        )
+    )
 
-    prompt = f"""
-You are SpendWise, an empathetic, expert AI Financial Advisor.
-User query: "{query}"
+    answer = _llm().invoke([
+        HumanMessage(
+            content=f"""
+            You are SpendWise, an expert financial advisor.
 
-User Profile:
-- Name: {profile.get('user_name', 'User')}
-- Persona: {fin.get('persona', 'Salaried')}
-- Monthly Income: ₹{fin.get('monthly_income', 0):,.2f}
+            User Name: {profile.get('user_name', 'User')}
+            User Persona: {fin.get('persona', 'Salaried')}
 
-Relevant Knowledge:
-{knowledge_text[:1500]}
+            Question: {query}
 
-Answer the user's question clearly, warmly, and accurately.
-"""
-    res = llm.invoke([HumanMessage(content=prompt)])
-    answer = extract_response_text(res.content)
+            Context:
+            {context}
 
-    return {
-        "response_text": answer,
-        "messages": [AIMessage(content=answer)],
-    }
+            Give a clear, concise, and personalized answer. Refer to the user's persona where relevant.
+            """
+        )
+    ]).content
+
+    return {"response_text": answer}
 
 
 # ---------------------------------------------------------------------------
 # Node 4: RAG Agent (ReAct Pattern)
 # ---------------------------------------------------------------------------
-def rag_react_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    llm = _llm()
+def rag_react_agent(state):
     user_data = json.loads(state.get("user_data_json", "{}"))
-    person_type = user_data.get("person_type", "Salaried")
 
-    think_prompt = f"""
-You are a financial knowledge retrieval planner.
-User profile: {person_type}, Income: ₹{user_data.get('monthly_income',0):,.0f}, EMIs: ₹{user_data.get('house_emi',0):,.0f}.
-Generate 3 financial knowledge search queries for ChromaDB.
-Return ONLY JSON array of 3 strings.
-"""
+    prompt = f"""
+    User Persona: {user_data.get('person_type', 'Salaried')}
+    Income: {user_data.get('monthly_income', 0)}
+    EMI: {user_data.get('house_emi', 0)}
+
+    Generate 3 financial search queries.
+    Return JSON array only.
+    """
+
     try:
-        res = llm.invoke([HumanMessage(content=think_prompt)])
-        queries = json.loads(extract_response_text(res.content))
-        if not isinstance(queries, list):
-            raise ValueError
-    except Exception:
-        queries = ["budget planning India", "SIP investment tax India", "emergency fund debt management"]
+        queries = json.loads(
+            _llm().invoke([HumanMessage(content=prompt)]).content
+        )
+    except:
+        queries = [
+            "budget planning",
+            "sip investment",
+            "debt management"
+        ]
 
-    all_docs = []
-    for q in queries[:3]:
-        docs = query_collection(financial_knowledge_collection(), q, n_results=3)
-        all_docs.extend(docs)
-
-    unique_docs = list(dict.fromkeys(all_docs))
-    expenses = query_collection(expense_history_collection(), f"expense history {person_type}", n_results=2)
-    past_reports = query_collection(past_reports_collection(), f"report {state.get('user_id')}", n_results=2)
-
-    retrieved = {
-        "knowledge_snippets": unique_docs,
-        "expense_snippets": expenses,
-        "past_reports": past_reports,
-    }
+    docs = []
+    for q in queries:
+        docs += query_collection(
+            financial_knowledge_collection(),
+            q,
+            3
+        )
 
     return {
-        "retrieved_context": retrieved,
-        "messages": [AIMessage(content=f"[RAG Agent] Retrieved {len(unique_docs)} knowledge snippets.")],
+        "retrieved_context": {
+            "knowledge_snippets": list(set(docs))
+        }
     }
 
 
 # ---------------------------------------------------------------------------
 # Node 5: Market Research Agent (ReAct Pattern)
 # ---------------------------------------------------------------------------
-def market_react_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    llm = _llm()
-    person_type = state.get("person_type", "Salaried")
+def market_react_agent(state):
+    persona = state.get("person_type", "Salaried")
 
-    think_prompt = f"""
-You are a financial market research planner.
-User persona: {person_type}.
-Generate 2 web search queries for current Indian market financial data (inflation, interest rates, mutual fund returns).
-Return ONLY JSON array of 2 strings.
-"""
+    prompt = f"""
+    Persona: {persona}
+    Generate 2 Indian financial market search queries.
+    Return JSON array only.
+    """
+
     try:
-        res = llm.invoke([HumanMessage(content=think_prompt)])
-        queries = json.loads(extract_response_text(res.content))
-        if not isinstance(queries, list):
-            raise ValueError
-    except Exception:
-        queries = ["India inflation interest rates", "India SIP mutual fund returns"]
+        queries = json.loads(
+            _llm().invoke(
+                [HumanMessage(content=prompt)]
+            ).content
+        )
+    except:
+        queries = [
+            "India inflation rate",
+            "India mutual fund returns"
+        ]
 
-    results = []
-    for q in queries[:2]:
-        out = tavily_search_tool.invoke({"query": q})
-        if out and "failed" not in out.lower():
-            results.append(f"### {q}\n{out}")
-
-    combined = "\n\n".join(results) if results else "Current market conditions stable. Fixed income 6.5-7.5%, Equity SIP historical 12%."
+    results = [
+        tavily_search_tool.invoke({"query": q})
+        for q in queries[:2]
+    ]
 
     return {
-        "market_context": combined,
-        "messages": [AIMessage(content=f"[Market Agent] Fetched live market data for {len(results)} queries.")],
+        "market_context": "\n".join(results)
     }
 
 
@@ -370,144 +297,101 @@ def calculator_agent(state: FinancialPlanningState) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Node 7: Recommendation Agent (Reflection Pattern)
 # ---------------------------------------------------------------------------
-def recommendation_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    llm = _llm()
+def recommendation_agent(state):
     metrics = state.get("financial_metrics", {})
-    retrieved = state.get("retrieved_context", {})
-    knowledge = "\n".join(retrieved.get("knowledge_snippets", []))
     market = state.get("market_context", "")
-    critic_feedback = state.get("critic_feedback", "")
-    revision_count = state.get("revision_count", 0)
+    feedback = state.get("critic_feedback", "")
 
     prompt = f"""
-You are a certified financial advisor.
-Generate 5 personalized financial recommendations for:
-User: {state.get('user_name', 'Client')} ({state.get('person_type', 'Salaried')})
-Financial Metrics:
-{json.dumps(metrics, indent=2)}
+    User: {state.get('user_name')}
+    Persona: {state.get('person_type')}
 
-Knowledge Context:
-{knowledge[:1500]}
+    Metrics:
+    {metrics}
 
-Market Context:
-{market[:800]}
+    Market:
+    {market}
 
-Previous Feedback (if any):
-{critic_feedback}
+    Feedback:
+    {feedback}
 
-Return ONLY JSON array of 5 recommendation objects:
-[
-  {{
-    "action": "Description of action with specific numbers",
-    "expected_impact": "Expected financial result",
-    "priority": "High/Medium/Low"
-  }}
-]
-"""
+    Generate 5 personalized recommendations.
+    Return JSON array only.
+    """
+
     try:
-        res = llm.invoke([HumanMessage(content=prompt)])
-        recs = json.loads(extract_response_text(res.content))
-        if not isinstance(recs, list):
-            raise ValueError
-    except Exception:
-        recs = [
-            {"action": f"Allocate ₹{metrics.get('recommended_monthly_sip', 0):,.0f} into diversified equity SIPs.", "expected_impact": "Long-term wealth creation", "priority": "High"},
-            {"action": f"Build emergency fund of ₹{metrics.get('emergency_fund_target', 0):,.0f}.", "expected_impact": "Financial safety net", "priority": "High"},
-            {"action": f"Maintain monthly expenses within ₹{metrics.get('essential_expenses', 0) + metrics.get('non_essential_expenses', 0):,.0f}.", "expected_impact": "Sustain positive cash flow", "priority": "Medium"}
-        ]
+        recs = json.loads(
+            _llm().invoke(
+                [HumanMessage(content=prompt)]
+            ).content
+        )
+    except:
+        recs = []
 
-    return {
-        "recommendations": recs,
-        "messages": [AIMessage(content=f"[Recommendation Agent] Generated {len(recs)} recommendations (Revision: {revision_count}).")],
-    }
+    return {"recommendations": recs}
 
 
 # ---------------------------------------------------------------------------
 # Node 8: Trade-off Agent
 # ---------------------------------------------------------------------------
-def trade_off_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    llm = _llm()
+def trade_off_agent(state):
     metrics = state.get("financial_metrics", {})
     recs = state.get("recommendations", [])
 
     prompt = f"""
-Analyze the trade-offs for these financial recommendations:
-Metrics: {json.dumps(metrics, indent=2)}
-Recommendations: {json.dumps(recs, indent=2)}
+    Metrics: {metrics}
+    Recommendations: {recs}
 
-Generate 2-3 strategic trade-off comparisons (e.g. Debt Repayment vs SIP Investing, Aggressive Savings vs Lifestyle).
-Return ONLY JSON array of objects:
-[
-  {{
-    "strategy": "Strategy Name",
-    "benefits": "Key benefits",
-    "tradeoffs": "Key trade-offs or drawbacks",
-    "priority": "High/Medium/Low"
-  }}
-]
-"""
+    Generate 2-3 financial strategy trade-offs.
+    Return JSON array only.
+    """
+
     try:
-        res = llm.invoke([HumanMessage(content=prompt)])
-        tradeoffs = json.loads(extract_response_text(res.content))
-        if not isinstance(tradeoffs, list):
-            raise ValueError
-    except Exception:
-        tradeoffs = [
-            {"strategy": "Aggressive Debt Payoff", "benefits": "Reduces interest burden quickly", "tradeoffs": "Delays equity market participation", "priority": "High"},
-            {"strategy": "Balanced SIP + Emergency Corpus", "benefits": "Builds liquidity and long-term wealth simultaneously", "tradeoffs": "Slower debt clearance", "priority": "Medium"}
-        ]
+        tradeoffs = json.loads(
+            _llm().invoke(
+                [HumanMessage(content=prompt)]
+            ).content
+        )
+    except:
+        tradeoffs = []
 
-    return {
-        "tradeoff_analysis": tradeoffs,
-        "messages": [AIMessage(content=f"[Trade-off Agent] Generated {len(tradeoffs)} trade-off strategies.")],
-    }
+    return {"tradeoff_analysis": tradeoffs}
 
 
 # ---------------------------------------------------------------------------
 # Node 9: Critic Agent
 # ---------------------------------------------------------------------------
-def critic_agent(state: FinancialPlanningState) -> Dict[str, Any]:
-    llm = _llm()
-    revision_count = state.get("revision_count", 0)
-
-    if revision_count >= 2:
-        return {
-            "critic_feedback": "APPROVED",
-            "messages": [AIMessage(content="[Critic Agent] Maximum review cycles reached. Approved.")],
-        }
-
-    metrics = state.get("financial_metrics", {})
+def critic_agent(state):
     recs = state.get("recommendations", [])
     tradeoffs = state.get("tradeoff_analysis", [])
 
     prompt = f"""
-You are a strict financial plan critic. Validate these outputs for consistency, feasibility, and correctness:
-Metrics: {json.dumps(metrics, indent=2)}
-Recommendations: {json.dumps(recs, indent=2)}
-Trade-offs: {json.dumps(tradeoffs, indent=2)}
+You are a financial plan reviewer.
 
-Respond ONLY with "APPROVED" or a JSON object listing issues:
+Recommendations:
+{json.dumps(recs)}
+
+Trade-offs:
+{json.dumps(tradeoffs)}
+
+Check if the advice is realistic, consistent, and actionable.
+
+Return only:
 APPROVED
-OR
-{{"issues": ["issue 1"], "revised_guidance": "guidance"}}
+
+or
+
+A short improvement suggestion.
 """
+
     try:
-        res = llm.invoke([HumanMessage(content=prompt)])
-        text = extract_response_text(res.content).strip()
-        if "APPROVED" in text.upper():
-            feedback = "APPROVED"
-        else:
-            feedback = text
-            revision_count += 1
-    except Exception:
+        feedback = _llm().invoke(
+            [HumanMessage(content=prompt)]
+        ).content.strip()
+    except:
         feedback = "APPROVED"
 
-    return {
-        "critic_feedback": feedback,
-        "revision_count": revision_count,
-        "messages": [AIMessage(content=f"[Critic Agent] Review decision: {feedback[:50]}")],
-    }
-
+    return {"critic_feedback": feedback}
 
 def critique_router(state: FinancialPlanningState) -> str:
     if state.get("critic_feedback", "") == "APPROVED":
@@ -518,55 +402,64 @@ def critique_router(state: FinancialPlanningState) -> str:
 # ---------------------------------------------------------------------------
 # Node 10: Report Agent
 # ---------------------------------------------------------------------------
-def report_agent(state: FinancialPlanningState) -> Dict[str, Any]:
+def report_agent(state):
     metrics = state.get("financial_metrics", {})
     recs = state.get("recommendations", [])
     tradeoffs = state.get("tradeoff_analysis", [])
     market = state.get("market_context", "")
 
-    report_payload = {
-        "user_id": state.get("user_id", "001"),
-        "user_name": state.get("user_name", "User"),
-        "person_type": state.get("person_type", "Salaried"),
-        "executive_summary": f"Comprehensive financial review for {state.get('user_name')}. Monthly surplus: ₹{metrics.get('monthly_surplus', 0):,.2f}.",
-        "calculations": metrics,
+    prompt = f"""
+    Create a professional financial report summary.
+
+    User: {state.get('user_name')}
+    Persona: {state.get('person_type')}
+
+    Metrics:
+    {json.dumps(metrics, indent=2)}
+
+    Recommendations:
+    {json.dumps(recs, indent=2)}
+
+    Trade-offs:
+    {json.dumps(tradeoffs, indent=2)}
+
+    Market Context:
+    {market[:1000]}
+
+    Write:
+    1. Executive Summary
+    2. Key Financial Observations
+    3. Overall Financial Health
+
+    Keep it concise and professional.
+    """
+
+    try:
+        summary = _llm().invoke(
+            [HumanMessage(content=prompt)]
+        ).content
+    except:
+        summary = "Financial analysis completed successfully."
+
+    report_data = {
+        "user_id": state.get("user_id"),
+        "user_name": state.get("user_name"),
+        "persona": state.get("person_type"),
+        "summary": summary,
+        "metrics": metrics,
         "recommendations": recs,
-        "tradeoff_analysis": tradeoffs,
+        "tradeoffs": tradeoffs,
         "market_insights": market,
     }
 
-    pdf_path = pdf_report_tool.invoke({"report_data": json.dumps(report_payload)})
-
-    # Build final response text
-    response_parts = [
-        f"📊 **Financial Snapshot for {state.get('user_name')}**\n",
-        f"• **Monthly Income:** ₹{metrics.get('monthly_income', 0):,.2f}",
-        f"• **Monthly Surplus:** ₹{metrics.get('monthly_surplus', 0):,.2f}",
-        f"• **Savings Rate:** {metrics.get('savings_rate_pct', 0):.1f}%",
-        f"• **Debt-to-Income Ratio:** {metrics.get('dti_ratio_pct', 0):.1f}%\n",
-        "💡 **Key Recommendations:**"
-    ]
-    for i, r in enumerate(recs, 1):
-        action = r.get("action", str(r)) if isinstance(r, dict) else str(r)
-        response_parts.append(f"{i}. {action}")
-
-    response_parts.append("\n⚖️ **Trade-Off Analysis:**")
-    for i, t in enumerate(tradeoffs, 1):
-        strat = t.get("strategy", f"Option {i}") if isinstance(t, dict) else str(t)
-        benefits = t.get("benefits", "") if isinstance(t, dict) else ""
-        response_parts.append(f"• **{strat}**: {benefits}")
-
-    if pdf_path:
-        response_parts.append(f"\n📄 **PDF Report Generated:** `{pdf_path}`")
-
-    final_text = "\n".join(response_parts)
+    pdf_path = pdf_report_tool.invoke({
+        "report_data": json.dumps(report_data)
+    })
 
     return {
         "pdf_path": pdf_path,
-        "response_text": final_text,
-        "messages": [AIMessage(content=f"[Report Agent] Generated PDF report at {pdf_path}")],
+        "response_text": summary,
     }
-
 
 # ---------------------------------------------------------------------------
 # Graph Builder

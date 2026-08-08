@@ -134,12 +134,18 @@ def chat(request: ChatRequest):
             person_type=fin.get("persona", "Salaried"),
             monthly_income=float(fin.get("monthly_income", 0.0)),
             house_emi=float(debt.get("monthly_emi", 0.0)),
+            
+            #hardcoded...let's see if we can remove it or not
             insurance_premium=0.0,
             health_expenses=0.0,
             other_liabilities=[],
             age=30.0,
+
             chat_query=request.message,
+
+            #no chat history is passing
             chat_history=[],
+
             profile_dict=profile,
         )
 

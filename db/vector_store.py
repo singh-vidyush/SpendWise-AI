@@ -137,35 +137,27 @@ def normalize_user_profile(raw_profile: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Helper: User Profile Ops
 # ---------------------------------------------------------------------------
-def upsert_user_profile(user_id: str, profile_data: Dict[str, Any], session_id: str = "default") -> str:
+def upsert_user_profile(user_id, profile_data, session_id="default"):
     """
-    Normalizes profile, creates embeddings and metadata, stores in ChromaDB.
-    Supports update and versioning.
+        Normalizes profile, creates embeddings and metadata, stores in ChromaDB.
+        Supports update and versioning.
     """
-    col = user_profiles_collection()
-    normalized = normalize_user_profile(profile_data)
-    profile_json = json.dumps(normalized, indent=2)
-
-    version = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    doc_id = f"user_{user_id}"
+    profile = normalize_user_profile(profile_data)
+    profile_json = json.dumps(profile)
 
     try:
-        embed = get_embed_model().embed_query(profile_json)
-        col.upsert(
-            ids=[doc_id],
+        user_profiles_collection().upsert(
+            ids=[f"user_{user_id}"],
             documents=[profile_json],
-            embeddings=[embed],
+            embeddings=[get_embed_model().embed_query(profile_json)],
             metadatas=[{
                 "user_id": str(user_id),
-                "session_id": str(session_id),
-                "user_name": normalized["user_name"],
-                "version": version,
-                "updated_at": normalized["updated_at"],
+                "session_id": str(session_id)
             }]
         )
-        logger.info(f"Successfully upserted profile for user_id={user_id}")
+        
     except Exception as e:
-        logger.error(f"Error upserting profile to ChromaDB: {e}")
+        logger.error(e)
 
     return profile_json
 
