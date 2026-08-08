@@ -188,36 +188,36 @@ def profile_exists(user_id: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Helper: Expense History Ops
-# ---------------------------------------------------------------------------
-def add_expense_history(user_id: str, month: str, category: str, amount: float, notes: str = ""):
-    col = expense_history_collection()
-    doc_id = f"exp_{user_id}_{month}_{category}"
-    text = f"User {user_id} spent ₹{amount:.2f} on {category} in {month}. Notes: {notes}"
-    metadata = {
-        "user_id": str(user_id),
-        "month": month,
-        "category": category,
-        "amount": amount,
-    }
-    try:
-        embed = get_embed_model().embed_query(text)
-        col.upsert(ids=[doc_id], documents=[text], embeddings=[embed], metadatas=[metadata])
-    except Exception as e:
-        logger.error(f"Error adding expense history: {e}")
+# # ---------------------------------------------------------------------------
+# # Helper: Expense History Ops
+# # ---------------------------------------------------------------------------
+# def add_expense_history(user_id: str, month: str, category: str, amount: float, notes: str = ""):
+#     col = expense_history_collection()
+#     doc_id = f"exp_{user_id}_{month}_{category}"
+#     text = f"User {user_id} spent ₹{amount:.2f} on {category} in {month}. Notes: {notes}"
+#     metadata = {
+#         "user_id": str(user_id),
+#         "month": month,
+#         "category": category,
+#         "amount": amount,
+#     }
+#     try:
+#         embed = get_embed_model().embed_query(text)
+#         col.upsert(ids=[doc_id], documents=[text], embeddings=[embed], metadatas=[metadata])
+#     except Exception as e:
+#         logger.error(f"Error adding expense history: {e}")
 
 
-def get_expense_history(user_id: str, n_results: int = 5) -> List[str]:
-    col = expense_history_collection()
-    try:
-        embed = get_embed_model().embed_query(f"expense history for user {user_id}")
-        res = col.query(query_embeddings=[embed], n_results=n_results, where={"user_id": str(user_id)})
-        if res and res.get("documents") and len(res["documents"]) > 0:
-            return res["documents"][0]
-    except Exception as e:
-        logger.error(f"Error fetching expense history: {e}")
-    return []
+# def get_expense_history(user_id: str, n_results: int = 5) -> List[str]:
+#     col = expense_history_collection()
+#     try:
+#         embed = get_embed_model().embed_query(f"expense history for user {user_id}")
+#         res = col.query(query_embeddings=[embed], n_results=n_results, where={"user_id": str(user_id)})
+#         if res and res.get("documents") and len(res["documents"]) > 0:
+#             return res["documents"][0]
+#     except Exception as e:
+#         logger.error(f"Error fetching expense history: {e}")
+#     return []
 
 
 # ---------------------------------------------------------------------------

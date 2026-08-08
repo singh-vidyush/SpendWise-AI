@@ -30,8 +30,6 @@ from db.vector_store import (
     get_user_profile,
     query_collection,
     financial_knowledge_collection,
-    expense_history_collection,
-    past_reports_collection,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,7 +145,8 @@ def intent_router(state):
 
             response = _llm().invoke(
                 [HumanMessage(content=prompt)]
-            ).content.lower()
+            )
+            response = extract_response_text(response.content).lower()
 
             if "conversational" in response:
                 intent = "conversational"
@@ -200,7 +199,8 @@ def conversational_reply_agent(state):
             Give a clear, concise, and personalized answer. Refer to the user's persona where relevant.
             """
         )
-    ]).content
+    ])
+    answer = extract_response_text(answer.content)
 
     return {"response_text": answer}
 
@@ -222,8 +222,9 @@ def rag_react_agent(state):
 
     try:
         queries = json.loads(
-            _llm().invoke([HumanMessage(content=prompt)]).content
+            _llm().invoke([HumanMessage(content=prompt)])
         )
+        queries = extract_response_text(queries.content)
     except:
         queries = [
             "budget planning",
@@ -262,8 +263,9 @@ def market_react_agent(state):
         queries = json.loads(
             _llm().invoke(
                 [HumanMessage(content=prompt)]
-            ).content
+            )
         )
+        queries = extract_response_text(queries.content)
     except:
         queries = [
             "India inflation rate",
@@ -323,8 +325,9 @@ def recommendation_agent(state):
         recs = json.loads(
             _llm().invoke(
                 [HumanMessage(content=prompt)]
-            ).content
+            )
         )
+        recs = extract_response_text(recs.content)
     except:
         recs = []
 
@@ -350,8 +353,9 @@ def trade_off_agent(state):
         tradeoffs = json.loads(
             _llm().invoke(
                 [HumanMessage(content=prompt)]
-            ).content
+            )
         )
+        tradeoffs = extract_response_text(tradeoffs.content)
     except:
         tradeoffs = []
 
@@ -387,7 +391,8 @@ A short improvement suggestion.
     try:
         feedback = _llm().invoke(
             [HumanMessage(content=prompt)]
-        ).content.strip()
+        )
+        feedback = extract_response_text(feedback.content)
     except:
         feedback = "APPROVED"
 
@@ -437,7 +442,8 @@ def report_agent(state):
     try:
         summary = _llm().invoke(
             [HumanMessage(content=prompt)]
-        ).content
+        )
+        summary = extract_response_text(summary.content)
     except:
         summary = "Financial analysis completed successfully."
 

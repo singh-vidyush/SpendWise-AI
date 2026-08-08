@@ -23,156 +23,74 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
 
-from config import TAVILY_API_KEY, PDF_OUTPUT_DIR
-from db.vector_store import (
-    query_collection,
-    financial_knowledge_collection,
-    expense_history_collection,
-    market_data_collection,
-    past_reports_collection,
-    upsert_market_data,
-    add_past_report,
+
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
 )
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from config import TAVILY_API_KEY, PDF_OUTPUT_DIR
+
+from db.vector_store import add_past_report
 
 logger = logging.getLogger(__name__)
 
 
 @tool
-def calculation_tool(user_data: str) -> str:
+def calculation_tool(user_data):
     """
-    Perform complete financial calculations.
-
-    user_data JSON keys:
-    monthly_income, essential_expenses, non_essential_expenses, current_savings,
-    house_emi, insurance_premium, health_expenses, other_liabilities, person_type, age, debt_details
-    """
-    try:
-        data = json.loads(user_data) if isinstance(user_data, str) else user_data
-    except Exception:
-        return json.dumps({"error": "Invalid JSON input to calculation_tool"})
+Calculate financial metrics such as surplus, savings rate, DTI ratio, emergency fund target, and SIP recommendations.
+"""
+    data = json.loads(user_data)
 
     income = float(data.get("monthly_income", 0))
-    essential = float(data.get("essential_expenses", 0))
-    non_essential = float(data.get("non_essential_expenses", 0))
-    savings = float(data.get("current_savings", 0))
-
-    # Debt details & EMIs
-    house_emi = float(data.get("house_emi", 0))
-    insurance = float(data.get("insurance_premium", 0))
-    health = float(data.get("health_expenses", 0))
-
-    debt_details = data.get("debt_details", {})
-    if isinstance(debt_details, dict):
-        additional_emi = float(debt_details.get("monthly_emi", 0))
-        total_outstanding_debt = float(debt_details.get("total_outstanding_debt", 0))
-    else:
-        additional_emi = 0.0
-        total_outstanding_debt = 0.0
-
-    others_sum = sum(
-        float(x.get("amount", 0)) if isinstance(x, dict) else float(x)
-        for x in data.get("other_liabilities", [])
+    expenses = (
+        float(data.get("essential_expenses", 0))
+        + float(data.get("non_essential_expenses", 0))
     )
 
-    total_emis = house_emi + additional_emi + others_sum
-    total_monthly_expenses = essential + non_essential + insurance + health
-    total_liabilities_and_expenses = total_emis + total_monthly_expenses
+    emi = float(data.get("house_emi", 0))
+    savings = float(data.get("current_savings", 0))
 
-    monthly_surplus = income - total_liabilities_and_expenses
-    savings_rate = (monthly_surplus / income * 100) if income > 0 else 0.0
-    dti_ratio = (total_emis / income * 100) if income > 0 else 0.0
-    emi_ratio = dti_ratio
-
-    # Annual Income & Tax Estimation (Indian New Tax Regime FY 2024-25)
-    annual_income = income * 12
-    person_type = str(data.get("person_type", "salaried")).lower()
-    taxable = max(annual_income - (75000 if person_type == "salaried" else 0), 0)
-
-    tax = 0.0
-    if taxable > 1500000:
-        tax = 150000 + (taxable - 1500000) * 0.30
-    elif taxable > 1200000:
-        tax = 90000 + (taxable - 1200000) * 0.20
-    elif taxable > 1000000:
-        tax = 60000 + (taxable - 1000000) * 0.15
-    elif taxable > 700000:
-        tax = 45000 + (taxable - 700000) * 0.10
-    elif taxable > 300000:
-        tax = (taxable - 300000) * 0.05
-
-    # 87A rebate for income <= 7,00,000
-    if taxable <= 700000:
-        tax = 0.0
-
-    # Net worth analysis (Savings - Outstanding Debt)
-    net_worth = savings - total_outstanding_debt
-
-    # Emergency fund target (6 months of essential expenses & EMIs)
-    monthly_must_haves = essential + total_emis
-    emergency_fund_target = monthly_must_haves * 6
-
-    recommended_sip = max(monthly_surplus * 0.40, 0.0)
-    recommended_savings = max(monthly_surplus * 0.20, 0.0)
+    surplus = income - expenses - emi
 
     result = {
-        "monthly_income": round(income, 2),
-        "essential_expenses": round(essential, 2),
-        "non_essential_expenses": round(non_essential, 2),
-        "total_monthly_emis": round(total_emis, 2),
-        "total_monthly_liabilities": round(total_liabilities_and_expenses, 2),
-        "monthly_surplus": round(monthly_surplus, 2),
-        "savings_rate_pct": round(savings_rate, 2),
-        "dti_ratio_pct": round(dti_ratio, 2),
-        "emi_to_income_ratio_pct": round(emi_ratio, 2),
-        "annual_income": round(annual_income, 2),
-        "estimated_annual_tax": round(tax, 2),
-        "current_savings": round(savings, 2),
-        "total_outstanding_debt": round(total_outstanding_debt, 2),
-        "estimated_net_worth": round(net_worth, 2),
-        "emergency_fund_target": round(emergency_fund_target, 2),
-        "recommended_monthly_sip": round(recommended_sip, 2),
-        "recommended_monthly_savings": round(recommended_savings, 2),
-        "health_status": "healthy" if savings_rate >= 20 and dti_ratio < 40 else "needs_improvement",
-        "emi_warning": dti_ratio > 40,
-        "emergency_fund_gap": round(max(emergency_fund_target - savings, 0), 2),
+        "monthly_income": income,
+        "monthly_surplus": surplus,
+        "savings_rate_pct": (surplus / income * 100) if income else 0,
+        "dti_ratio_pct": (emi / income * 100) if income else 0,
+        "recommended_monthly_sip": max(surplus * 0.4, 0),
+        "emergency_fund_target": (expenses + emi) * 6,
     }
 
-    return json.dumps(result, indent=2)
-
+    return json.dumps(result)
 
 @tool
-def tavily_search_tool(query: str) -> str:
+def tavily_search_tool(query):
     """
-    Search web for market information, rates, inflation, or investment news.
+    Search web for financial market information.
     """
-    if not TAVILY_API_KEY:
-        return "Tavily API key not configured. Skipping web search."
-
     try:
-        client = TavilyClient(api_key=TAVILY_API_KEY)
-        results = client.search(query=query, max_results=3)
+        results = TavilyClient(
+            api_key=TAVILY_API_KEY
+        ).search(query=query, max_results=3)
 
-        snippets = []
-        for result in results.get("results", []):
-            snippet = f"**{result.get('title', '')}**\n{result.get('content', '')}"
-            snippets.append(snippet)
-
-        combined = "\n\n".join(snippets) if snippets else "No market results found."
-
-        doc_id = f"market_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{query[:20].replace(' ','_')}"
-        upsert_market_data(
-            doc_id,
-            combined,
-            {
-                "query": query,
-                "fetched_at": datetime.utcnow().isoformat()
-            }
+        context = "\n".join(
+            r["content"]
+            for r in results.get("results", [])
         )
-        return combined
-    except Exception as exc:
-        logger.error(f"Tavily search failed: {exc}")
-        return f"Tavily search failed: {exc}"
 
+        return context
+
+    except Exception as e:
+        return str(e)
+
+
+PDF_OUTPUT_DIR = "reports"
+os.makedirs(PDF_OUTPUT_DIR, exist_ok=True)
 
 @tool
 def pdf_report_tool(report_data: str) -> str:
@@ -351,5 +269,3 @@ def pdf_report_tool(report_data: str) -> str:
         filepath=filepath,
         metadata={"user_name": user_name, "person_type": person_type}
     )
-
-    return filepath

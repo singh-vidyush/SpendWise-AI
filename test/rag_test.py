@@ -1,4 +1,4 @@
-from rag import knowledge_collection, embedding_model
+from knowledge_ingestion import knowledge_collection, embedding_model
 
 
 query = "How should I plan SIP investment?"

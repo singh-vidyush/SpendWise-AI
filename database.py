@@ -89,42 +89,42 @@ def add_user(username, email, password):
 # GET USER BY ID
 # -------------------------
 
-def get_user_by_id(user_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+# def get_user_by_id(user_id):
+#     conn = get_connection()
+#     cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT *
-    FROM users
-    WHERE user_id = ?
-    """, (user_id,))
+#     cursor.execute("""
+#     SELECT *
+#     FROM users
+#     WHERE user_id = ?
+#     """, (user_id,))
 
-    user = cursor.fetchone()
+#     user = cursor.fetchone()
 
-    conn.close()
+#     conn.close()
 
-    return user
+#     return user
 
 
 # -------------------------
 # GET USER NAME
 # -------------------------
 
-def get_user_name(user_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+# def get_user_name(user_id):
+#     conn = get_connection()
+#     cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT username
-    FROM users
-    WHERE user_id = ?
-    """, (user_id,))
+#     cursor.execute("""
+#     SELECT username
+#     FROM users
+#     WHERE user_id = ?
+#     """, (user_id,))
 
-    result = cursor.fetchone()
+#     result = cursor.fetchone()
 
-    conn.close()
+#     conn.close()
 
-    return result[0] if result else None
+#     return result[0] if result else None
 
 
 # -------------------------
