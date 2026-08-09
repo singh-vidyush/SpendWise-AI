@@ -227,9 +227,7 @@ def rag_react_agent(state):
     """
 
     try:
-        queries = json.loads(
-            _llm().invoke([HumanMessage(content=prompt)])
-        )
+        queries = _llm().invoke([HumanMessage(content=prompt)])
         queries = extract_response_text(queries.content)
     except:
         queries = [
@@ -266,11 +264,10 @@ def market_react_agent(state):
     """
 
     try:
-        queries = json.loads(
-            _llm().invoke(
+        queries = _llm().invoke(
                 [HumanMessage(content=prompt)]
             )
-        )
+
         queries = extract_response_text(queries.content)
     except:
         queries = [
@@ -328,11 +325,10 @@ def recommendation_agent(state):
     """
 
     try:
-        recs = json.loads(
-            _llm().invoke(
+        recs =_llm().invoke(
                 [HumanMessage(content=prompt)]
             )
-        )
+
         recs = extract_response_text(recs.content)
     except:
         recs = []
@@ -356,11 +352,10 @@ def trade_off_agent(state):
     """
 
     try:
-        tradeoffs = json.loads(
-            _llm().invoke(
+        tradeoffs = _llm().invoke(
                 [HumanMessage(content=prompt)]
             )
-        )
+
         tradeoffs = extract_response_text(tradeoffs.content)
     except:
         tradeoffs = []

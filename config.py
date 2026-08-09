@@ -7,7 +7,7 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Tavily API Key
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "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")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 
 # ChromaDB Collections
 CHROMA_PERSIST_DIR = os.path.join(os.path.dirname(__file__), "chroma_db")
