@@ -4,6 +4,7 @@ import re
 import json
 import html
 import requests
+import os
 
 # ============================================================
 # SPENDWISE - COMPLETE STREAMLIT FRONTEND
@@ -205,6 +206,46 @@ div[data-testid="stHorizontalBlock"] .stButton > button {
     font-size: 12.5px;
 }
 
+.bot-content {
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.bot-section-header {
+    color: #111827;
+    font-weight: 750;
+    font-size: 14.5px;
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+.bot-para {
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 6px;
+}
+
+.bot-list {
+    margin: 4px 0 8px 16px;
+    padding: 0;
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.bot-list li {
+    margin-bottom: 3px;
+}
+
+.bot-num-item {
+    margin: 4px 0 5px 2px;
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
 .user-row {
     display: flex;
     justify-content: flex-end;
@@ -349,16 +390,105 @@ def logo():
     """, unsafe_allow_html=True)
 
 
+def format_bot_markdown(text):
+    if not text:
+        return ""
+
+    lines = str(text).strip().split("\n")
+    formatted_lines = []
+    in_list = False
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if in_list:
+                formatted_lines.append("</ul>")
+                in_list = False
+            formatted_lines.append('<div style="height: 4px;"></div>')
+            continue
+
+        # Headers: ### or lines starting with #
+        header_match = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+        if header_match:
+            if in_list:
+                formatted_lines.append("</ul>")
+                in_list = False
+            header_text = header_match.group(2)
+            header_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", header_text)
+            formatted_lines.append(f'<div class="bot-section-header">{header_text}</div>')
+            continue
+
+        # Lines starting with section emojis
+        if any(stripped.startswith(prefix) for prefix in ["📊", "✅", "⚖️", "🌍", "💳", "🏦"]):
+            if in_list:
+                formatted_lines.append("</ul>")
+                in_list = False
+            header_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", stripped)
+            formatted_lines.append(f'<div class="bot-section-header">{header_text}</div>')
+            continue
+
+        # Bullet points: - , * , •
+        bullet_match = re.match(r"^[-*•]\s+(.*)$", stripped)
+        if bullet_match:
+            item_text = bullet_match.group(1)
+            item_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", item_text)
+            if not in_list:
+                formatted_lines.append('<ul class="bot-list">')
+                in_list = True
+            formatted_lines.append(f"<li>{item_text}</li>")
+            continue
+
+        # Numbered items: 1. , 2. , etc.
+        num_match = re.match(r"^(\d+)\.\s+(.*)$", stripped)
+        if num_match:
+            if in_list:
+                formatted_lines.append("</ul>")
+                in_list = False
+            num = num_match.group(1)
+            item_text = num_match.group(2)
+            item_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", item_text)
+            formatted_lines.append(f'<div class="bot-num-item"><strong>{num}.</strong> {item_text}</div>')
+            continue
+
+        # Standing alone section header names
+        if stripped in ["Executive Summary", "Financial Metrics", "Recommendations", "Trade-Off Analysis", "Market Insights", "Closing Summary"]:
+            if in_list:
+                formatted_lines.append("</ul>")
+                in_list = False
+            formatted_lines.append(f'<div class="bot-section-header">{stripped}</div>')
+            continue
+
+        # Normal paragraph
+        if in_list:
+            formatted_lines.append("</ul>")
+            in_list = False
+
+        para_text = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", stripped)
+        para_text = re.sub(r"\*(.*?)\*", r"<em>\1</em>", para_text)
+        formatted_lines.append(f'<p class="bot-para">{para_text}</p>')
+
+    if in_list:
+        formatted_lines.append("</ul>")
+
+    return "\n".join(formatted_lines)
+
+
 def bot_message(title, description=""):
-    description_html = (
-        f'<div class="bot-subtitle">{description}</div>'
-        if description else ""
-    )
+    if not description:
+        description_html = ""
+    elif "<div" in description or "<p" in description or "<ul" in description:
+        description_html = f'<div class="bot-content">{description}</div>'
+    elif len(description.split("\n")) > 1 or any(k in description for k in ["**", "###", "•", "- ", "1.", "📊", "✅", "⚖️", "🌍"]):
+        formatted = format_bot_markdown(description)
+        description_html = f'<div class="bot-content">{formatted}</div>'
+    else:
+        description_html = f'<div class="bot-subtitle">{esc(description)}</div>'
+
     st.markdown(f"""
     <div class="bot-row">
         <div class="bot-avatar">🤖</div>
         <div class="bot-bubble">
-            <div class="bot-title">{title}</div>
+            <div class="bot-title">{esc(title)}</div>
             {description_html}
         </div>
     </div>
@@ -1196,17 +1326,18 @@ def advisor_response(question):
     )
 
     if response.status_code != 200:
-        return f"Backend Error: {response.text}"
+        return f"Backend Error: {response.text}", ""
 
     data = response.json()
 
     if not data.get("success", False):
-        return data.get("message", "Something went wrong.")
+        return data.get("message", "Something went wrong."), ""
 
     resp_text = data.get("response_text", "").strip()
+    pdf_path = data.get("pdf_path", "").strip()
 
     if resp_text:
-        return resp_text
+        return resp_text, pdf_path
 
     answer = ""
     calculations = data.get("calculations", {})
@@ -1245,8 +1376,7 @@ def advisor_response(question):
         answer += "🌍 **Market Insights**\n\n"
         answer += market_insights[:1000]
 
-    return answer or "Thank you for your question! Your profile has been updated."
-
+    return answer or "Thank you for your question! Your profile has been updated.", pdf_path
 
 
 def submit_advisor_question(question):
@@ -1260,11 +1390,12 @@ def submit_advisor_question(question):
         "content": clean
     })
 
-    response = advisor_response(clean)
+    resp_text, pdf_path = advisor_response(clean)
 
     st.session_state.advisor_messages.append({
         "role": "assistant",
-        "content": response
+        "content": resp_text,
+        "pdf_path": pdf_path
     })
 
     st.rerun()
@@ -1305,11 +1436,26 @@ def advisor_chat():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    for message in st.session_state.advisor_messages:
+    for i, message in enumerate(st.session_state.advisor_messages):
         if message["role"] == "user":
             user_message(esc(message["content"]))
         else:
-            bot_message("SpendWise", esc(message["content"]))
+            bot_message("SpendWise", message["content"])
+            pdf_path = message.get("pdf_path")
+            if pdf_path and os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    pdf_bytes = f.read()
+                filename = os.path.basename(pdf_path)
+                st.markdown('<div style="margin-left: 53px; margin-top: -6px; margin-bottom: 14px;">', unsafe_allow_html=True)
+                st.download_button(
+                    label="📄 Download Financial Report (PDF)",
+                    data=pdf_bytes,
+                    file_name=filename,
+                    mime="application/pdf",
+                    key=f"download_pdf_{i}_{filename}",
+                    type="primary"
+                )
+                st.markdown('</div>', unsafe_allow_html=True)
 
     prompt = st.chat_input("Ask SpendWise anything about your finances...")
 

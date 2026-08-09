@@ -144,7 +144,7 @@ def split_documents(documents):
 
 
 # =====================================================
-# INGEST KNOWLEDGE BASE AND USER INFO
+# INGEST KNOWLEDGE BASE
 # =====================================================
 
 def ingest_knowledge():

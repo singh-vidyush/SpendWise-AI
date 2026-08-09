@@ -71,69 +71,6 @@ def past_reports_collection():
     return _get_or_create(CHROMA_COLLECTION_PAST_REPORTS)
 
 
-# ---------------------------------------------------------------------------
-# Schema Validation and Normalization
-# ---------------------------------------------------------------------------
-# user normalization can be removed as its in frontend
-# def normalize_user_profile(raw_profile: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Validates and normalizes frontend user profile JSON.
-    Handles missing or ill-formatted fields safely.
-    """
-    if not isinstance(raw_profile, dict):
-        raw_profile = {}
-        #can be changes based on frontend input variable 
-    user_name = raw_profile.get("user_name") or raw_profile.get("name") or "User"
-    user_email = raw_profile.get("user_email") or raw_profile.get("email") or ""
-
-    fin = raw_profile.get("financial_profile")
-    if not isinstance(fin, dict):
-        fin = raw_profile
-
-    persona = fin.get("persona") or fin.get("person_type") or "Salaried"
-    monthly_income = float(fin.get("monthly_income") or 0.0)
-    essential_expenses = float(fin.get("essential_expenses") or 0.0)
-    non_essential_expenses = float(fin.get("non_essential_expenses") or 0.0)
-    current_savings = float(fin.get("current_savings") or 0.0)
-    monthly_saving_investment = float(fin.get("monthly_saving_investment") or 0.0)
-
-    debt_details = fin.get("debt_details")
-    if not isinstance(debt_details, dict):
-        debt_details = {
-            "has_debt": False,
-            "debt_type": "None",
-            "total_outstanding_debt": 0.0,
-            "monthly_emi": 0.0,
-        }
-    else:
-        debt_details = {
-            "has_debt": bool(debt_details.get("has_debt", False)),
-            "debt_type": str(debt_details.get("debt_type", "None")),
-            "total_outstanding_debt": float(debt_details.get("total_outstanding_debt", 0.0)),
-            "monthly_emi": float(debt_details.get("monthly_emi", 0.0)),
-        }
-
-    investments = fin.get("investments")
-    if not isinstance(investments, list):
-        investments = []
-
-    normalized = {
-        "user_name": str(user_name),
-        "user_email": str(user_email),
-        "financial_profile": {
-            "persona": str(persona),
-            "monthly_income": monthly_income,
-            "essential_expenses": essential_expenses,
-            "non_essential_expenses": non_essential_expenses,
-            "current_savings": current_savings,
-            "debt_details": debt_details,
-            "investments": investments,
-            "monthly_saving_investment": monthly_saving_investment,
-        },
-        "updated_at": datetime.utcnow().isoformat(),
-    }
-    return normalized
-
 
 # ---------------------------------------------------------------------------
 # Helper: User Profile Ops
@@ -143,7 +80,7 @@ def upsert_user_profile(user_id, profile_data, session_id="default"):
         Normalizes profile, creates embeddings and metadata, stores in ChromaDB.
         Supports update and versioning.
     """
-    # profile = normalize_user_profile(profile_data)
+
     profile_json = json.dumps(profile_data)
 
     try:

@@ -89,8 +89,120 @@ def tavily_search_tool(query):
         return str(e)
 
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, KeepTogether
+
 PDF_OUTPUT_DIR = "reports"
 os.makedirs(PDF_OUTPUT_DIR, exist_ok=True)
+
+
+def _generate_pie_chart(calc_data: dict, filepath: str):
+    try:
+        income = float(calc_data.get("monthly_income", 0))
+        emi = float(calc_data.get("house_emi", 0) or calc_data.get("total_monthly_emis", 0))
+        surplus = float(calc_data.get("monthly_surplus", 0))
+        expenses = float(calc_data.get("essential_expenses", 0) + calc_data.get("non_essential_expenses", 0))
+
+        if expenses == 0 and income > 0:
+            expenses = max(income - emi - surplus, 0)
+
+        labels = []
+        sizes = []
+        colors_list = []
+
+        if expenses > 0:
+            labels.append("Expenses")
+            sizes.append(expenses)
+            colors_list.append("#FF6B00")
+        if emi > 0:
+            labels.append("EMI / Debt")
+            sizes.append(emi)
+            colors_list.append("#3B82F6")
+        if surplus > 0:
+            labels.append("Savings / Surplus")
+            sizes.append(surplus)
+            colors_list.append("#10B981")
+
+        if not sizes or sum(sizes) == 0:
+            labels = ["Expenses", "EMI", "Surplus"]
+            sizes = [50, 20, 30]
+            colors_list = ["#FF6B00", "#3B82F6", "#10B981"]
+
+        fig, ax = plt.subplots(figsize=(4.2, 3.2))
+        wedges, texts, autotexts = ax.pie(
+            sizes,
+            labels=labels,
+            colors=colors_list,
+            autopct='%1.1f%%',
+            startangle=140,
+            textprops=dict(color="#111827", fontsize=8)
+        )
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_weight('bold')
+
+        ax.set_title("Income Allocation", fontsize=10, fontweight='bold', color='#111827', pad=10)
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=200, bbox_inches='tight')
+        plt.close(fig)
+    except Exception as e:
+        logger.error(f"Error generating pie chart: {e}")
+
+
+def _generate_bar_chart(calc_data: dict, filepath: str):
+    try:
+        income = float(calc_data.get("monthly_income", 0))
+        expenses = float(calc_data.get("essential_expenses", 0) + calc_data.get("non_essential_expenses", 0))
+        emi = float(calc_data.get("house_emi", 0) or calc_data.get("total_monthly_emis", 0))
+        if expenses == 0 and income > 0:
+            expenses = max(income - emi - float(calc_data.get("monthly_surplus", 0)), 0)
+        surplus = float(calc_data.get("monthly_surplus", 0))
+        emergency_target = float(calc_data.get("emergency_fund_target", 0))
+
+        categories = ['Income', 'Expenses', 'EMI', 'Savings', 'Emergency Target']
+        values = [income, expenses, emi, max(surplus, 0), emergency_target]
+        bar_colors = ['#FF6B00', '#EF4444', '#F59E0B', '#10B981', '#6366F1']
+
+        fig, ax = plt.subplots(figsize=(5.2, 3.2))
+        bars = ax.bar(categories, values, color=bar_colors, width=0.55)
+
+        ax.set_title("Financial Metrics Comparison (₹)", fontsize=10, fontweight='bold', color='#111827', pad=10)
+        ax.set_ylabel("Amount (₹)", fontsize=8, color='#374151')
+        plt.xticks(rotation=20, ha='right', fontsize=8)
+        plt.yticks(fontsize=8)
+
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:
+                ax.annotate(
+                    f"₹{int(height):,}",
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha='center', va='bottom', fontsize=7, fontweight='bold'
+                )
+
+        plt.tight_layout()
+        plt.savefig(filepath, dpi=200, bbox_inches='tight')
+        plt.close(fig)
+    except Exception as e:
+        logger.error(f"Error generating bar chart: {e}")
+
+
+def _parse_flex_data(val):
+    if isinstance(val, (dict, list)):
+        return val
+    if isinstance(val, str):
+        val_str = val.strip()
+        if val_str.startswith("{") or val_str.startswith("["):
+            try:
+                return json.loads(val_str)
+            except Exception:
+                pass
+    return val
+
 
 @tool
 def pdf_report_tool(report_data: str) -> str:
@@ -104,7 +216,7 @@ def pdf_report_tool(report_data: str) -> str:
         return "Error: Invalid JSON passed to pdf_report_tool"
 
     user_name = data.get("user_name", "Valued Client")
-    person_type = data.get("person_type", "Salaried")
+    person_type = data.get("persona") or data.get("person_type", "Salaried")
     user_id = str(data.get("user_id", "001"))
 
     report_id = str(uuid.uuid4())[:8]
@@ -128,7 +240,7 @@ def pdf_report_tool(report_data: str) -> str:
         fontSize=20,
         leading=24,
         textColor=colors.HexColor("#FF6B00"),
-        spaceAfter=6
+        spaceAfter=4
     )
 
     subtitle_style = ParagraphStyle(
@@ -137,17 +249,17 @@ def pdf_report_tool(report_data: str) -> str:
         fontSize=10,
         leading=14,
         textColor=colors.HexColor("#555555"),
-        spaceAfter=15
+        spaceAfter=14
     )
 
     h2_style = ParagraphStyle(
         "H2",
         parent=styles["Heading2"],
-        fontSize=13,
-        leading=16,
+        fontSize=12.5,
+        leading=15.5,
         textColor=colors.HexColor("#111827"),
-        spaceBefore=12,
-        spaceAfter=6
+        spaceBefore=10,
+        spaceAfter=5
     )
 
     body_style = ParagraphStyle(
@@ -161,44 +273,39 @@ def pdf_report_tool(report_data: str) -> str:
 
     story = []
 
-    # Title Banner
+    # 1. Cover Section Banner
     story.append(Paragraph("SpendWise Personal Financial Report", title_style))
     story.append(Paragraph(
-        f"Client Name: <b>{user_name}</b> | Profile: <b>{person_type.title()}</b> | Generated: <b>{datetime.now().strftime('%d %b %Y, %H:%M')}</b>",
+        f"Client Name: <b>{user_name}</b> | Persona: <b>{person_type.title()}</b> | Generated: <b>{datetime.now().strftime('%d %b %Y, %H:%M')}</b>",
         subtitle_style
     ))
     story.append(Spacer(1, 0.2 * cm))
 
-    # Executive Summary
-    exec_summary = data.get("executive_summary", "")
+    # 2. Executive Summary
+    exec_summary = data.get("summary") or data.get("executive_summary", "")
     if not exec_summary:
-        calc = data.get("calculations", {})
+        calc = _parse_flex_data(data.get("metrics") or data.get("calculations", {}))
         exec_summary = (
             f"Financial analysis for {user_name}. Monthly income is ₹{calc.get('monthly_income', 0):,.2f} "
-            f"with total liabilities and expenses of ₹{calc.get('total_monthly_liabilities', 0):,.2f}, leaving a monthly surplus of "
-            f"₹{calc.get('monthly_surplus', 0):,.2f} (Savings Rate: {calc.get('savings_rate_pct', 0):.1f}%)."
+            f"with a monthly surplus of ₹{calc.get('monthly_surplus', 0):,.2f} (Savings Rate: {calc.get('savings_rate_pct', 0):.1f}%)."
         )
 
     story.append(Paragraph("1. Executive Summary", h2_style))
-    story.append(Paragraph(exec_summary, body_style))
+    story.append(Paragraph(str(exec_summary), body_style))
     story.append(Spacer(1, 0.3 * cm))
 
-    # Financial Snapshot & Key Metrics
-    calc = data.get("calculations", {})
-    if calc:
-        story.append(Paragraph("2. Financial Snapshot & Key Metrics", h2_style))
+    # 3. Financial Metrics Section
+    calc = _parse_flex_data(data.get("metrics") or data.get("calculations", {}))
+    if isinstance(calc, dict) and calc:
+        story.append(Paragraph("2. Financial Metrics", h2_style))
         table_data = [
-            ["Metric", "Amount / Percentage"],
+            ["Metric", "Value"],
             ["Monthly Income", f"₹{calc.get('monthly_income', 0):,.2f}"],
-            ["Essential & Non-Essential Expenses", f"₹{calc.get('essential_expenses', 0) + calc.get('non_essential_expenses', 0):,.2f}"],
-            ["Monthly EMIs / Liabilities", f"₹{calc.get('total_monthly_emis', 0):,.2f}"],
             ["Monthly Surplus", f"₹{calc.get('monthly_surplus', 0):,.2f}"],
             ["Savings Rate (%)", f"{calc.get('savings_rate_pct', 0):.1f}%"],
             ["Debt-to-Income (DTI) Ratio (%)", f"{calc.get('dti_ratio_pct', 0):.1f}%"],
-            ["Estimated Net Worth", f"₹{calc.get('estimated_net_worth', 0):,.2f}"],
-            ["Estimated Annual Tax (New Regime)", f"₹{calc.get('estimated_annual_tax', 0):,.2f}"],
-            ["Emergency Fund Target (6 Months)", f"₹{calc.get('emergency_fund_target', 0):,.2f}"],
             ["Recommended Monthly SIP", f"₹{calc.get('recommended_monthly_sip', 0):,.2f}"],
+            ["Emergency Fund Target (6 Months)", f"₹{calc.get('emergency_fund_target', 0):,.2f}"],
         ]
 
         table = Table(table_data, colWidths=[9.5 * cm, 7.5 * cm])
@@ -213,42 +320,79 @@ def pdf_report_tool(report_data: str) -> str:
         story.append(table)
         story.append(Spacer(1, 0.3 * cm))
 
-    # Recommendations
-    recs = data.get("recommendations", [])
+    # 4. Recommendations Section
+    recs = _parse_flex_data(data.get("recommendations", []))
     if recs:
-        story.append(Paragraph("3. Recommended Actions", h2_style))
-        for i, rec in enumerate(recs, 1):
-            text = rec.get("action", str(rec)) if isinstance(rec, dict) else str(rec)
-            story.append(Paragraph(f"<b>Action {i}:</b> {text}", body_style))
+        story.append(Paragraph("3. Recommendations", h2_style))
+        if isinstance(recs, list):
+            for i, rec in enumerate(recs, 1):
+                text = rec.get("action", str(rec)) if isinstance(rec, dict) else str(rec)
+                story.append(Paragraph(f"<b>{i}.</b> {text}", body_style))
+        else:
+            story.append(Paragraph(str(recs), body_style))
         story.append(Spacer(1, 0.3 * cm))
 
-    # Trade-off Analysis
-    tradeoffs = data.get("tradeoff_analysis", [])
+    # 5. Trade-Off Analysis Section
+    tradeoffs = _parse_flex_data(data.get("tradeoffs") or data.get("tradeoff_analysis", []))
     if tradeoffs:
-        story.append(Paragraph("4. Strategic Trade-Off Analysis", h2_style))
-        for i, item in enumerate(tradeoffs, 1):
-            if isinstance(item, dict):
-                strategy = item.get("strategy", f"Strategy {i}")
-                benefits = item.get("benefits", "")
-                tradeoff = item.get("tradeoffs", item.get("drawbacks", ""))
-                story.append(Paragraph(f"<b>{i}. {strategy}</b>", body_style))
-                if benefits:
-                    story.append(Paragraph(f"   • <i>Benefits:</i> {benefits}", body_style))
-                if tradeoff:
-                    story.append(Paragraph(f"   • <i>Trade-offs:</i> {tradeoff}", body_style))
-            else:
-                story.append(Paragraph(f"• {item}", body_style))
+        story.append(Paragraph("4. Trade-Off Analysis", h2_style))
+        if isinstance(tradeoffs, list):
+            for i, item in enumerate(tradeoffs, 1):
+                if isinstance(item, dict):
+                    strategy = item.get("strategy", f"Strategy {i}")
+                    benefits = item.get("benefits", "")
+                    drawbacks = item.get("tradeoffs") or item.get("drawbacks", "")
+                    story.append(Paragraph(f"<b>Strategy {i}: {strategy}</b>", body_style))
+                    if benefits:
+                        story.append(Paragraph(f"   • <i>Benefits:</i> {benefits}", body_style))
+                    if drawbacks:
+                        story.append(Paragraph(f"   • <i>Drawbacks / Trade-offs:</i> {drawbacks}", body_style))
+                else:
+                    story.append(Paragraph(f"• {item}", body_style))
+        else:
+            story.append(Paragraph(str(tradeoffs), body_style))
         story.append(Spacer(1, 0.3 * cm))
 
-    # Market & Guidelines Context
-    market = data.get("market_insights", "")
+    # 6. Market Insights Section
+    market = data.get("market_insights") or data.get("market_context", "")
     if market:
-        story.append(Paragraph("5. Market Context & Outlook", h2_style))
-        story.append(Paragraph(market[:800], body_style))
+        story.append(Paragraph("5. Market Insights", h2_style))
+        story.append(Paragraph(str(market)[:1000], body_style))
         story.append(Spacer(1, 0.3 * cm))
 
-    # Disclaimer
+    # 7. Portfolio Visualization Section (Pie & Bar Charts)
+    if isinstance(calc, dict) and calc:
+        story.append(Paragraph("6. Portfolio Visualization Section", h2_style))
+        pie_img_path = os.path.join(PDF_OUTPUT_DIR, f"chart_pie_{report_id}.png")
+        bar_img_path = os.path.join(PDF_OUTPUT_DIR, f"chart_bar_{report_id}.png")
+
+        _generate_pie_chart(calc, pie_img_path)
+        _generate_bar_chart(calc, bar_img_path)
+
+        if os.path.exists(pie_img_path) and os.path.exists(bar_img_path):
+            pie_img = Image(pie_img_path, width=8.0 * cm, height=6.0 * cm)
+            bar_img = Image(bar_img_path, width=9.0 * cm, height=6.0 * cm)
+
+            charts_table = Table([[pie_img, bar_img]], colWidths=[8.5 * cm, 9.0 * cm])
+            charts_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            story.append(charts_table)
+            story.append(Spacer(1, 0.3 * cm))
+
+    # 8. Closing Summary Section
+    story.append(Paragraph("7. Closing Summary", h2_style))
+    closing_text = (
+        f"<b>Overall Financial Health & Key Observations:</b> {user_name}'s financial portfolio shows a strong surplus foundation. "
+        f"Follow the recommended action items above to maintain high savings efficiency while optimizing long-term wealth growth."
+    )
+    story.append(Paragraph(closing_text, body_style))
     story.append(Spacer(1, 0.4 * cm))
+
+    # 9. Disclaimer Section
     story.append(Paragraph(
         "<i>Disclaimer: This report is generated by SpendWise AI for informational purposes. "
         "Please consult a certified financial advisor before executing investment strategies.</i>",
@@ -258,14 +402,14 @@ def pdf_report_tool(report_data: str) -> str:
     doc.build(story)
 
     # Store summary in past_reports collection
-    summary = (
+    summary_text = (
         f"Report for {user_name} ({person_type}). Monthly Surplus: ₹{calc.get('monthly_surplus', 0):,.0f}, "
         f"Savings Rate: {calc.get('savings_rate_pct', 0):.1f}%, DTI: {calc.get('dti_ratio_pct', 0):.1f}%."
     )
     add_past_report(
         user_id=user_id,
         report_id=report_id,
-        summary=summary,
+        summary=summary_text,
         filepath=filepath,
         metadata={"user_name": user_name, "person_type": person_type}
     )
