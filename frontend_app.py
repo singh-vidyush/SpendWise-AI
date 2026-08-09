@@ -1120,8 +1120,7 @@ def summary_html():
         ("Investments", esc(investment_text)),
         ("Monthly saving / investment", format_money(a.get("monthly_saving_investment", 0))),
     ]
-
-    body = "".join(
+    return "".join(
         f"""
         <div class="summary-row">
             <div class="summary-label">{label}</div>
@@ -1131,7 +1130,6 @@ def summary_html():
         for label, value in rows
     )
 
-    return f'<div class="summary-card">{body}</div>'
 
 
 def review_chat():
@@ -1311,7 +1309,7 @@ def advisor_chat():
         if message["role"] == "user":
             user_message(esc(message["content"]))
         else:
-            bot_message(esc(message["content"]))
+            bot_message("SpendWise", esc(message["content"]))
 
     prompt = st.chat_input("Ask SpendWise anything about your finances...")
 

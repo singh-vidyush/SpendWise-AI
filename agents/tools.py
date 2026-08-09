@@ -269,3 +269,5 @@ def pdf_report_tool(report_data: str) -> str:
         filepath=filepath,
         metadata={"user_name": user_name, "person_type": person_type}
     )
+
+    return filepath

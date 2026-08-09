@@ -184,7 +184,13 @@ def conversational_reply_agent(state):
     answer = _llm().invoke([
         HumanMessage(
             content=f"""
-            You are SpendWise, an expert financial advisor.
+            You are SpendWise, an AI financial advisor.
+
+            Greeting Rules:
+            - If the user only greets you, reply with a short greeting.
+            - Do not provide financial recommendations, calculations, or analysis for greetings.
+            - Example response:
+            "Hi 👋 I'm SpendWise, your AI financial advisor. + some small profile based message +  How can I help you today?" 
 
             User Name: {profile.get('user_name', 'User')}
             User Persona: {fin.get('persona', 'Salaried')}
@@ -193,8 +199,10 @@ def conversational_reply_agent(state):
 
             Context:
             {context}
+            
+            For actual financial questions, provide a personalized answer using the user's context.
+            You are SpendWise, an expert financial advisor.
 
-            Give a clear, concise, and personalized answer. Refer to the user's persona where relevant.
             """
         )
     ])
