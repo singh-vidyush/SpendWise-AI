@@ -223,32 +223,30 @@ def rag_react_agent(state):
     EMI: {user_data.get('house_emi', 0)}
 
     Generate 3 financial search queries.
-    Return JSON array only.
+    Return ONLY a JSON array of strings. No markdown.
     """
 
     try:
-        queries = _llm().invoke([HumanMessage(content=prompt)])
-        queries = extract_response_text(queries.content)
-    except:
-        queries = [
-            "budget planning",
-            "sip investment",
-            "debt management"
-        ]
+        raw = extract_response_text(                        # 1️⃣ object → STRING
+            _llm().invoke([HumanMessage(content=prompt)]).content
+        )
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        queries = json.loads(raw)                           # 2️⃣ STRING → LIST  ← keep this!
+        if not isinstance(queries, list) or not queries:
+            raise ValueError("not a non-empty list")
+    except Exception:
+        queries = ["budget planning", "sip investment", "debt management"]
+    print(type(queries), queries)
 
     docs = []
-    for q in queries:
-        docs += query_collection(
-            financial_knowledge_collection(),
-            q,
-            3
-        )
+    seen = set()
+    for q in queries:                                       # now loops over 3 QUERIES ✅
+        for d in query_collection(financial_knowledge_collection(), q, 3):
+            if d not in seen:
+                seen.add(d)
+                docs.append(d)
 
-    return {
-        "retrieved_context": {
-            "knowledge_snippets": list(set(docs))
-        }
-    }
+    return {"retrieved_context": {"knowledge_snippets": docs}}
 
 
 # ---------------------------------------------------------------------------
@@ -259,30 +257,35 @@ def market_react_agent(state):
 
     prompt = f"""
     Persona: {persona}
-    Generate 2 Indian financial market search queries.
-    Return JSON array only.
+    Generate 2 specific Indian financial market search queries for 2026.
+
+    Rules:
+    Avoid vague/commercial words like "best", "top", "good", "cheapest".
+
+    Use concrete financial terms and instruments
+
+    (e.g. "ELSS returns 2026 India", "PPF interest rate", "SIP mutual fund NAV trends", "RBI repo rate").
+
+    Focus on market data, rates, and trends — NOT product/brand recommendations.
+    Return ONLY a JSON array of strings. No markdown.
     """
 
     try:
-        queries = _llm().invoke(
-                [HumanMessage(content=prompt)]
-            )
-
-        queries = extract_response_text(queries.content)
-    except:
-        queries = [
-            "India inflation rate",
-            "India mutual fund returns"
-        ]
-
+        raw = extract_response_text(                        # 1️⃣ object → STRING
+            _llm().invoke([HumanMessage(content=prompt)]).content
+        )
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        queries = json.loads(raw)                           # 2️⃣ STRING → LIST ← the fix
+        if not isinstance(queries, list) or not queries:
+            raise ValueError("not a non-empty list")
+    except Exception:
+        queries = ["India inflation rate", "India mutual fund returns"]
     results = [
-        tavily_search_tool.invoke({"query": q})
-        for q in queries[:2]
+        str(tavily_search_tool.invoke({"query": q}))        # 3️⃣ stringify for safe join
+        for q in queries[:2]                                # now slices 2 QUERIES ✅
     ]
 
-    return {
-        "market_context": "\n".join(results)
-    }
+    return {"market_context": "\n".join(results)}
 
 
 # ---------------------------------------------------------------------------
@@ -308,29 +311,38 @@ def recommendation_agent(state):
     feedback = state.get("critic_feedback", "")
 
     prompt = f"""
-    User: {state.get('user_name')}
-    Persona: {state.get('person_type')}
+    You are SpendWise, an expert financial advisor.
 
-    Metrics:
-    {metrics}
+    User: {state.get('user_name', 'User')}
+    Persona: {state.get('person_type', 'Salaried')}
 
-    Market:
+    Financial Metrics:
+    {json.dumps(metrics, indent=2)}
+
+    Market Context:
     {market}
 
-    Feedback:
+    Critic Feedback (address this if present):
     {feedback}
 
-    Generate 5 personalized recommendations.
-    Return JSON array only.
+    Generate exactly 5 personalized, actionable financial recommendations.
+    Return ONLY a JSON array of 5 objects, each with this exact shape:
+    [
+      {{"title": "short title", "detail": "1-2 sentence explanation", "priority": "high"}}
+    ]
+    priority must be one of: "high", "medium", "low".
+    No markdown, no text outside the JSON.
     """
 
     try:
-        recs =_llm().invoke(
-                [HumanMessage(content=prompt)]
-            )
-
-        recs = extract_response_text(recs.content)
-    except:
+        raw = extract_response_text(                        # 1️⃣ object → STRING
+            _llm().invoke([HumanMessage(content=prompt)]).content
+        )
+        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        recs = json.loads(raw)                              # 2️⃣ STRING → LIST ← the fix
+        if not isinstance(recs, list) or not recs:
+            raise ValueError("not a non-empty list")
+    except Exception:
         recs = []
 
     return {"recommendations": recs}
@@ -352,15 +364,13 @@ def trade_off_agent(state):
     """
 
     try:
-        tradeoffs = _llm().invoke(
-                [HumanMessage(content=prompt)]
-            )
-
-        tradeoffs = extract_response_text(tradeoffs.content)
+        tradeoffs = _llm().invoke([HumanMessage(content=prompt)])
+        tradeoffs = extract_response_text(tradeoffs.content)   # ❌ STRING — no json.loads!
     except:
         tradeoffs = []
 
     return {"tradeoff_analysis": tradeoffs}
+
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +379,7 @@ def trade_off_agent(state):
 def critic_agent(state):
     recs = state.get("recommendations", [])
     tradeoffs = state.get("tradeoff_analysis", [])
+    revision = state.get("revision_count", 0)          # 👈 read current count
 
     prompt = f"""
 You are a financial plan reviewer.
@@ -380,27 +391,28 @@ Trade-offs:
 {json.dumps(tradeoffs)}
 
 Check if the advice is realistic, consistent, and actionable.
-
-Return only:
-APPROVED
-
-or
-
-A short improvement suggestion.
+Reply with the single word APPROVED if acceptable,
+otherwise a short improvement suggestion.
 """
-
     try:
-        feedback = _llm().invoke(
-            [HumanMessage(content=prompt)]
+        feedback = extract_response_text(
+            _llm().invoke([HumanMessage(content=prompt)]).content
         )
-        feedback = extract_response_text(feedback.content)
-    except:
+    except Exception:
         feedback = "APPROVED"
 
-    return {"critic_feedback": feedback}
+    return {
+        "critic_feedback": feedback,
+        "revision_count": revision + 1,                # 👈 increment EVERY cycle
+    }
 
-def critique_router(state: FinancialPlanningState) -> str:
-    if state.get("critic_feedback", "") == "APPROVED":
+
+def critique_router(state) -> str:
+    feedback = state.get("critic_feedback", "").strip().upper()
+    revision = state.get("revision_count", 0)
+
+    # approve on fuzzy match OR when max revisions hit (docstring says "max 2 cycles")
+    if "APPROVED" in feedback or revision >= 2:        # 👈 both escape hatches
         return "report_agent"
     return "recommendation_agent"
 
@@ -409,10 +421,10 @@ def critique_router(state: FinancialPlanningState) -> str:
 # Node 10: Report Agent
 # ---------------------------------------------------------------------------
 def report_agent(state):
-    metrics = state.get("financial_metrics", {})
-    recs = state.get("recommendations", [])
+    metrics   = state.get("financial_metrics", {})
+    recs      = state.get("recommendations", [])
     tradeoffs = state.get("tradeoff_analysis", [])
-    market = state.get("market_context", "")
+    market    = state.get("market_context", "")
 
     prompt = f"""
     Create a professional financial report summary.
@@ -441,21 +453,21 @@ def report_agent(state):
     """
 
     try:
-        summary = _llm().invoke(
-            [HumanMessage(content=prompt)]
+        summary = extract_response_text(                    # (summary is plain text —
+            _llm().invoke([HumanMessage(content=prompt)]).content   #  no json.loads needed ✅)
         )
-        summary = extract_response_text(summary.content)
-    except:
+    except Exception:
         summary = "Financial analysis completed successfully."
 
+    # 🔑 keys aligned to what pdf_report_tool ACTUALLY reads
     report_data = {
         "user_id": state.get("user_id"),
         "user_name": state.get("user_name"),
-        "persona": state.get("person_type"),
-        "summary": summary,
-        "metrics": metrics,
+        "person_type": state.get("person_type"),   # was "persona"
+        "executive_summary": summary,              # was "summary"
+        "calculations": metrics,                   # was "metrics"  ← unlocks metrics table
         "recommendations": recs,
-        "tradeoffs": tradeoffs,
+        "tradeoff_analysis": tradeoffs,            # was "tradeoffs"
         "market_insights": market,
     }
 
