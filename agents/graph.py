@@ -216,11 +216,13 @@ def conversational_reply_agent(state):
 # ---------------------------------------------------------------------------
 def rag_react_agent(state):
     user_data = json.loads(state.get("user_data_json", "{}"))
+    query = state.get("query", "")
 
     prompt = f"""
     User Persona: {user_data.get('person_type', 'Salaried')}
     Income: {user_data.get('monthly_income', 0)}
     EMI: {user_data.get('house_emi', 0)}
+    Query: {query}
 
     Generate 3 financial search queries.
     Return JSON array only.
@@ -256,9 +258,11 @@ def rag_react_agent(state):
 # ---------------------------------------------------------------------------
 def market_react_agent(state):
     persona = state.get("person_type", "Salaried")
-
+    query = state.get("query", "")
     prompt = f"""
     Persona: {persona}
+    Query: {query}
+
     Generate 2 Indian financial market search queries.
     Return JSON array only.
     """
@@ -306,7 +310,7 @@ def recommendation_agent(state):
     metrics = state.get("financial_metrics", {})
     market = state.get("market_context", "")
     feedback = state.get("critic_feedback", "")
-
+    
     prompt = f"""
     User: {state.get('user_name')}
     Persona: {state.get('person_type')}
