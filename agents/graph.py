@@ -2,7 +2,7 @@
 LangGraph multi-agent architecture for SpendWise-AI.
 
 Agents & Nodes:
-  1. intake_agent               – validates, normalizes, and stores user data via vector_store.py
+  1. intake_agent               – validates and stores user data via vector_store.py
   2. intent_router              – classifies requests into conversational, financial_analysis, report_generation, follow_up
   3. conversational_reply_agent – handles conversational queries using profile & RAG context
   4. rag_react_agent            – ReAct: queries ChromaDB (knowledge, expense history, past reports)
@@ -62,6 +62,7 @@ class FinancialPlanningState(TypedDict):
 
     pdf_path: str
     response_text: str
+    
 
 
 
@@ -310,7 +311,7 @@ def recommendation_agent(state):
     metrics = state.get("financial_metrics", {})
     market = state.get("market_context", "")
     feedback = state.get("critic_feedback", "")
-    
+
     prompt = f"""
     User: {state.get('user_name')}
     Persona: {state.get('person_type')}
@@ -374,40 +375,71 @@ def critic_agent(state):
     recs = state.get("recommendations", [])
     tradeoffs = state.get("tradeoff_analysis", [])
 
+    revision_count = state.get("revision_count", 0)
+
+    # Stop after 2 review cycles
+    if revision_count >= 2:
+        return {
+            "critic_feedback": "APPROVED",
+            "revision_count": revision_count
+        }
+
     prompt = f"""
 You are a financial plan reviewer.
 
 Recommendations:
-{json.dumps(recs)}
+{json.dumps(recs, indent=2)}
 
 Trade-offs:
-{json.dumps(tradeoffs)}
+{json.dumps(tradeoffs, indent=2)}
 
-Check if the advice is realistic, consistent, and actionable.
+Check whether the advice is:
 
-Return only:
+1. Realistic
+2. Consistent
+3. Actionable
+4. Financially sensible
+
+Return ONLY one of the following:
+
 APPROVED
 
 or
 
-A short improvement suggestion.
+A short improvement suggestion (one sentence).
 """
 
     try:
         feedback = _llm().invoke(
             [HumanMessage(content=prompt)]
         )
-        feedback = extract_response_text(feedback.content)
-    except:
+
+        feedback = extract_response_text(
+            feedback.content
+        ).strip()
+
+    except Exception:
         feedback = "APPROVED"
 
-    return {"critic_feedback": feedback}
+    return {
+        "critic_feedback": feedback,
+        "revision_count": revision_count + 1
+    }
 
 def critique_router(state: FinancialPlanningState) -> str:
-    if state.get("critic_feedback", "") == "APPROVED":
-        return "report_agent"
-    return "recommendation_agent"
 
+    feedback = state.get("critic_feedback", "")
+    revision_count = state.get("revision_count", 0)
+
+    # Approved -> move to report
+    if feedback == "APPROVED":
+        return "report_agent"
+
+    # Max 2 revisions -> force continue
+    if revision_count >= 2:
+        return "report_agent"
+
+    return "recommendation_agent"
 
 # ---------------------------------------------------------------------------
 # Node 10: Report Agent
