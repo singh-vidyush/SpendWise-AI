@@ -14,9 +14,9 @@ from agents.graph import run_planning_pipeline
 
 
 
-# # =====================================================
-# # APP INITIATION
-# # =====================================================
+# =====================================================
+# APP INITIATION
+# =====================================================
 app = FastAPI(title="SpendWise API")
 
 # =====================================================
@@ -88,18 +88,6 @@ def save_profile(request: SaveProfileRequest):
         return {"success": True, "profile": json.loads(saved_json)}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
-# #check wheather both below user id routing used if not remove
-# @app.get("/profile-exists/{user_id}")
-# def check_profile(user_id: int):
-#     return {"exists": profile_exists(str(user_id))}
-
-
-# @app.get("/profile/{user_id}")
-# def fetch_profile(user_id: int):
-#     profile = get_user_profile(str(user_id))
-#     return {"profile": profile}
-
 
 @app.post("/chat")
 def chat(request: ChatRequest):
