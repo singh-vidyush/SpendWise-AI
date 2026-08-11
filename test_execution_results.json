@@ -1,0 +1,373 @@
+[
+  {
+    "id": "TC-DB-01",
+    "title": "Database schema initialization (create_table)",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-02",
+    "title": "User registration with valid credentials",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-03",
+    "title": "Password SHA-256 hashing",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-04",
+    "title": "User verification with correct credentials",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-05",
+    "title": "User verification with wrong password",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-06",
+    "title": "User verification with non-existent email",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-07",
+    "title": "Duplicate email registration handling",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-08",
+    "title": "Email lookup functions (get_user_by_email, get_user_id)",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-DB-09",
+    "title": "Direct case-sensitivity check in database.py (requires caller lower-casing)",
+    "category": "Database & Auth",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-01",
+    "title": "Vector store collection initialization",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-02",
+    "title": "upsert_user_profile with valid profile dictionary",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-03",
+    "title": "get_user_profile for existing profile",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-04",
+    "title": "get_user_profile for non-existent profile",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-05",
+    "title": "profile_exists check for existing vs non-existing user",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-06",
+    "title": "upsert_market_data insertion into ChromaDB",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-07",
+    "title": "add_past_report insertion into past_reports collection",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-08",
+    "title": "query_collection vector search query",
+    "category": "Vector Store",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-VS-09",
+    "title": "Helper functions expected by test_end_to_end.py (add_expense_history, get_expense_history, get_past_reports)",
+    "category": "Vector Store",
+    "status": "FAIL",
+    "reason": "Missing functions in db/vector_store.py: add_expense_history, get_expense_history, get_past_reports"
+  },
+  {
+    "id": "TC-ING-01",
+    "title": "Section-aware splitting",
+    "category": "Knowledge Ingestion",
+    "status": "FAIL",
+    "reason": "Parsed sections: [('General', '=== Tax Rules ===\\nStandard deduction is 50k.\\n=== Investment ===\\nSIP is good.')]"
+  },
+  {
+    "id": "TC-ING-02",
+    "title": "Section-aware splitting fallback for plain text",
+    "category": "Knowledge Ingestion",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-ING-03",
+    "title": "Metadata inference from filename (_infer_metadata_from_filename)",
+    "category": "Knowledge Ingestion",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-ING-04",
+    "title": "Section sub-chunking (chunk_sections)",
+    "category": "Knowledge Ingestion",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-ING-05",
+    "title": "MD5 content-hash generation (_chunk_id)",
+    "category": "Knowledge Ingestion",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-ING-06",
+    "title": "Knowledge base directory document loading (load_all_sections)",
+    "category": "Knowledge Ingestion",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-01",
+    "title": "Standard financial calculation (Salaried, positive income/surplus)",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-02",
+    "title": "Zero income edge case (Division-by-zero protection)",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-03",
+    "title": "Zero expenses & zero EMI edge case",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-04",
+    "title": "Negative surplus & high debt edge case",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-05",
+    "title": "Extreme large numeric values stability test",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-06",
+    "title": "Missing optional input fields handling",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-CALC-07",
+    "title": "Invalid non-JSON payload handling in calculation_tool",
+    "category": "Calculation Engine",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-MKT-01",
+    "title": "Tavily market search tool execution",
+    "category": "Market Research",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-PDF-01",
+    "title": "pdf_report_tool valid PDF report generation",
+    "category": "PDF Generation",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-PDF-02",
+    "title": "PDF file persistence & non-empty byte size verification",
+    "category": "PDF Generation",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-PDF-03",
+    "title": "pdf_report_tool invalid JSON payload error handling",
+    "category": "PDF Generation",
+    "status": "FAIL",
+    "reason": "Did not handle invalid JSON"
+  },
+  {
+    "id": "TC-GRAPH-01",
+    "title": "intent_router fast-path for conversational greetings",
+    "category": "LangGraph Agents",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-GRAPH-02",
+    "title": "intent_router fast-path for pure educational questions",
+    "category": "LangGraph Agents",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-GRAPH-03",
+    "title": "intent_router fast-path for personal financial analysis",
+    "category": "LangGraph Agents",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-GRAPH-04",
+    "title": "conversational_reply_agent answer generation",
+    "category": "LangGraph Agents",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-GRAPH-05",
+    "title": "End-to-end planning pipeline execution (run_planning_pipeline)",
+    "category": "LangGraph Agents",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-GRAPH-06",
+    "title": "run_planning_pipeline with extra kwargs (insurance_premium, age, etc.)",
+    "category": "LangGraph Agents",
+    "status": "FAIL",
+    "reason": "TypeError: run_planning_pipeline() got an unexpected keyword argument 'insurance_premium'"
+  },
+  {
+    "id": "TC-API-01",
+    "title": "GET / health check endpoint",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-02",
+    "title": "POST /signup successful registration",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-03",
+    "title": "POST /signup duplicate email rejection",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-04",
+    "title": "POST /signup missing fields validation (422 Unprocessable)",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-05",
+    "title": "POST /login valid credentials authentication",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-06",
+    "title": "POST /login incorrect password authentication",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-07",
+    "title": "POST /login non-existent email authentication",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-08",
+    "title": "POST /save-profile valid user profile save",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-09",
+    "title": "POST /chat financial analysis request for user with profile",
+    "category": "FastAPI Endpoints",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-API-10",
+    "title": "POST /chat for user WITHOUT saved profile",
+    "category": "FastAPI Endpoints",
+    "status": "FAIL",
+    "reason": "'NoneType' object has no attribute 'get'"
+  },
+  {
+    "id": "TC-FE-01",
+    "title": "Streamlit frontend DEFAULTS session state definition",
+    "category": "Frontend Integration",
+    "status": "PASS",
+    "reason": ""
+  },
+  {
+    "id": "TC-FE-02",
+    "title": "Frontend API_BASE_URL configuration",
+    "category": "Frontend Integration",
+    "status": "PASS",
+    "reason": ""
+  }
+]
