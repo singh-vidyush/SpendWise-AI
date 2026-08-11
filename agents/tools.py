@@ -207,211 +207,406 @@ def _parse_flex_data(val):
 @tool
 def pdf_report_tool(report_data: str) -> str:
     """
-    Generate a complete PDF financial report using ReportLab.
-    Stores report summary in past_reports collection.
+    Generate a structured PDF financial report with priority-coded recommendation
+    cards, KPI summary row, charts, and trade-off comparison tables.
     """
     try:
         data = json.loads(report_data) if isinstance(report_data, str) else report_data
     except Exception:
         return "Error: Invalid JSON passed to pdf_report_tool"
 
-    user_name = data.get("user_name", "Valued Client")
+    user_name   = data.get("user_name", "Valued Client")
     person_type = data.get("persona") or data.get("person_type", "Salaried")
-    user_id = str(data.get("user_id", "001"))
-
-    report_id = str(uuid.uuid4())[:8]
-    filename = f"financial_report_{user_name.replace(' ', '_')}_{report_id}.pdf"
-    filepath = os.path.join(PDF_OUTPUT_DIR, filename)
+    user_id     = str(data.get("user_id", "001"))
+    report_id   = str(uuid.uuid4())[:8]
+    filename    = f"financial_report_{user_name.replace(' ', '_')}_{report_id}.pdf"
+    filepath    = os.path.join(PDF_OUTPUT_DIR, filename)
 
     doc = SimpleDocTemplate(
-        filepath,
-        pagesize=A4,
-        leftMargin=1.8 * cm,
-        rightMargin=1.8 * cm,
-        topMargin=1.8 * cm,
-        bottomMargin=1.8 * cm
+        filepath, pagesize=A4,
+        leftMargin=1.6*cm, rightMargin=1.6*cm,
+        topMargin=1.8*cm, bottomMargin=1.8*cm
     )
-
     styles = getSampleStyleSheet()
 
-    title_style = ParagraphStyle(
-        "ReportTitle",
-        parent=styles["Title"],
-        fontSize=20,
-        leading=24,
-        textColor=colors.HexColor("#FF6B00"),
-        spaceAfter=4
-    )
+    # ── Style palette ──────────────────────────────────────────────────────
+    BRAND       = colors.HexColor("#FF6B00")
+    DARK        = colors.HexColor("#111827")
+    MID         = colors.HexColor("#374151")
+    LIGHT_BG    = colors.HexColor("#F9FAFB")
+    BORDER      = colors.HexColor("#E5E7EB")
+    HIGH_COLOR  = colors.HexColor("#DC2626")   # red
+    MED_COLOR   = colors.HexColor("#D97706")   # amber
+    LOW_COLOR   = colors.HexColor("#16A34A")   # green
+    CAT_COLORS  = {
+        "savings":    colors.HexColor("#0EA5E9"),
+        "investment": colors.HexColor("#8B5CF6"),
+        "debt":       colors.HexColor("#EF4444"),
+        "insurance":  colors.HexColor("#F59E0B"),
+        "tax":        colors.HexColor("#10B981"),
+        "emergency":  colors.HexColor("#6366F1"),
+    }
+    CAT_ICONS = {
+        "savings": "💰", "investment": "📈", "debt": "💳",
+        "insurance": "🛡", "tax": "🧾", "emergency": "🚨",
+    }
 
-    subtitle_style = ParagraphStyle(
-        "ReportSubtitle",
-        parent=styles["Normal"],
-        fontSize=10,
-        leading=14,
-        textColor=colors.HexColor("#555555"),
-        spaceAfter=14
-    )
+    def _h(text, level=2):
+        sz = {1: 15, 2: 12, 3: 10}[level]
+        return Paragraph(text, ParagraphStyle(
+            f"H{level}", parent=styles["Heading2"], fontSize=sz,
+            textColor=DARK, spaceBefore=10, spaceAfter=4,
+            borderPad=0,
+        ))
 
-    h2_style = ParagraphStyle(
-        "H2",
-        parent=styles["Heading2"],
-        fontSize=12.5,
-        leading=15.5,
-        textColor=colors.HexColor("#111827"),
-        spaceBefore=10,
-        spaceAfter=5
-    )
+    def _body(text):
+        return Paragraph(text, ParagraphStyle(
+            "B", parent=styles["BodyText"], fontSize=9.2,
+            leading=13, textColor=MID, spaceAfter=3,
+        ))
 
-    body_style = ParagraphStyle(
-        "BodyTextCustom",
-        parent=styles["BodyText"],
-        fontSize=9.5,
-        leading=13.5,
-        textColor=colors.HexColor("#374151"),
-        spaceAfter=4
-    )
+    def _divider():
+        tbl = Table([[""]], colWidths=[17*cm])
+        tbl.setStyle(TableStyle([
+            ("LINEBELOW", (0, 0), (-1, -1), 0.6, BORDER),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        return tbl
 
     story = []
 
-    # 1. Cover Section Banner
-    story.append(Paragraph("SpendWise Personal Financial Report", title_style))
-    story.append(Paragraph(
-        f"Client Name: <b>{user_name}</b> | Persona: <b>{person_type.title()}</b> | Generated: <b>{datetime.now().strftime('%d %b %Y, %H:%M')}</b>",
-        subtitle_style
-    ))
-    story.append(Spacer(1, 0.2 * cm))
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 1 — Cover header
+    # ══════════════════════════════════════════════════════════════════════
+    cover = Table(
+        [[
+            Paragraph(
+                f"<font color='#FF6B00'><b>SpendWise</b></font> Personal Financial Report",
+                ParagraphStyle("Cover", fontSize=18, leading=22, textColor=DARK)
+            ),
+            Paragraph(
+                f"<font color='#6B7280'>{user_name} · {person_type.title()} · "
+                f"{datetime.now().strftime('%d %b %Y')}</font>",
+                ParagraphStyle("CoverSub", fontSize=9, leading=12, textColor=MID, alignment=2)
+            )
+        ]],
+        colWidths=[11*cm, 6*cm]
+    )
+    cover.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW", (0, 0), (-1, -1), 1.5, BRAND),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.append(cover)
+    story.append(Spacer(1, 0.4*cm))
 
-    # 2. Executive Summary
-    exec_summary = data.get("summary") or data.get("executive_summary", "")
-    if not exec_summary:
-        calc = _parse_flex_data(data.get("metrics") or data.get("calculations", {}))
-        exec_summary = (
-            f"Financial analysis for {user_name}. Monthly income is ₹{calc.get('monthly_income', 0):,.2f} "
-            f"with a monthly surplus of ₹{calc.get('monthly_surplus', 0):,.2f} (Savings Rate: {calc.get('savings_rate_pct', 0):.1f}%)."
-        )
-
-    story.append(Paragraph("1. Executive Summary", h2_style))
-    story.append(Paragraph(str(exec_summary), body_style))
-    story.append(Spacer(1, 0.3 * cm))
-
-    # 3. Financial Metrics Section
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 2 — KPI Cards row
+    # ══════════════════════════════════════════════════════════════════════
     calc = _parse_flex_data(data.get("metrics") or data.get("calculations", {}))
     if isinstance(calc, dict) and calc:
-        story.append(Paragraph("2. Financial Metrics", h2_style))
-        table_data = [
-            ["Metric", "Value"],
-            ["Monthly Income", f"₹{calc.get('monthly_income', 0):,.2f}"],
-            ["Monthly Surplus", f"₹{calc.get('monthly_surplus', 0):,.2f}"],
-            ["Savings Rate (%)", f"{calc.get('savings_rate_pct', 0):.1f}%"],
-            ["Debt-to-Income (DTI) Ratio (%)", f"{calc.get('dti_ratio_pct', 0):.1f}%"],
-            ["Recommended Monthly SIP", f"₹{calc.get('recommended_monthly_sip', 0):,.2f}"],
-            ["Emergency Fund Target (6 Months)", f"₹{calc.get('emergency_fund_target', 0):,.2f}"],
+        story.append(_h("Financial Snapshot", 2))
+        kpi_fields = [
+            ("Monthly Income",   f"₹{calc.get('monthly_income',0):,.0f}",   "#0EA5E9"),
+            ("Monthly Surplus",  f"₹{calc.get('monthly_surplus',0):,.0f}",  "#16A34A"),
+            ("Savings Rate",     f"{calc.get('savings_rate_pct',0):.1f}%",   "#8B5CF6"),
+            ("DTI Ratio",        f"{calc.get('dti_ratio_pct',0):.1f}%",      "#EF4444"),
+            ("Rec. SIP/month",   f"₹{calc.get('recommended_monthly_sip',0):,.0f}", "#F59E0B"),
+            ("Emergency Fund",   f"₹{calc.get('emergency_fund_target',0):,.0f}", "#6366F1"),
         ]
+        kpi_cells = []
+        for label, value, hex_col in kpi_fields:
+            cell = Table(
+                [[Paragraph(f"<b><font color='{hex_col}'>{value}</font></b>",
+                            ParagraphStyle("KV", fontSize=11, leading=13, alignment=1))],
+                 [Paragraph(f"<font color='#6B7280'>{label}</font>",
+                            ParagraphStyle("KL", fontSize=7.5, leading=10, alignment=1))]],
+                colWidths=[2.7*cm]
+            )
+            cell.setStyle(TableStyle([
+                ("BOX",            (0,0), (-1,-1), 0.5, colors.HexColor(hex_col)),
+                ("BACKGROUND",     (0,0), (-1,-1), colors.HexColor("#FAFAFA")),
+                ("TOPPADDING",     (0,0), (-1,-1), 5),
+                ("BOTTOMPADDING",  (0,0), (-1,-1), 5),
+                ("LEFTPADDING",    (0,0), (-1,-1), 3),
+                ("RIGHTPADDING",   (0,0), (-1,-1), 3),
+            ]))
+            kpi_cells.append(cell)
 
-        table = Table(table_data, colWidths=[9.5 * cm, 7.5 * cm])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FF6B00")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E5E7EB")),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("PADDING", (0, 0), (-1, -1), 5),
+        kpi_row = Table([kpi_cells], colWidths=[2.83*cm]*6)
+        kpi_row.setStyle(TableStyle([
+            ("ALIGN",   (0,0), (-1,-1), "CENTER"),
+            ("VALIGN",  (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING",  (0,0), (-1,-1), 2),
+            ("RIGHTPADDING", (0,0), (-1,-1), 2),
         ]))
-        story.append(table)
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(kpi_row)
+        story.append(Spacer(1, 0.4*cm))
 
-    # 4. Recommendations Section
-    recs = _parse_flex_data(data.get("recommendations", []))
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 3 — Executive Summary
+    # ══════════════════════════════════════════════════════════════════════
+    exec_summary = data.get("summary") or data.get("executive_summary", "")
+    if not exec_summary and isinstance(calc, dict):
+        exec_summary = (
+            f"Financial analysis for {user_name}. Monthly income ₹{calc.get('monthly_income',0):,.0f} "
+            f"with surplus ₹{calc.get('monthly_surplus',0):,.0f} "
+            f"(Savings Rate: {calc.get('savings_rate_pct',0):.1f}%)."
+        )
+    if exec_summary:
+        story.append(_divider())
+        story.append(_h("Executive Summary", 2))
+        story.append(_body(str(exec_summary)))
+        story.append(Spacer(1, 0.3*cm))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 4 — Charts (Pie + Bar side by side)
+    # ══════════════════════════════════════════════════════════════════════
+    if isinstance(calc, dict) and calc:
+        story.append(_divider())
+        story.append(_h("Portfolio Visualisation", 2))
+        pie_path = os.path.join(PDF_OUTPUT_DIR, f"pie_{report_id}.png")
+        bar_path = os.path.join(PDF_OUTPUT_DIR, f"bar_{report_id}.png")
+        _generate_pie_chart(calc, pie_path)
+        _generate_bar_chart(calc, bar_path)
+        if os.path.exists(pie_path) and os.path.exists(bar_path):
+            chart_tbl = Table(
+                [[Image(pie_path, 8*cm, 6*cm), Image(bar_path, 9*cm, 6*cm)]],
+                colWidths=[8.5*cm, 9*cm]
+            )
+            chart_tbl.setStyle(TableStyle([
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("ALIGN",  (0,0), (-1,-1), "CENTER"),
+            ]))
+            story.append(chart_tbl)
+            story.append(Spacer(1, 0.3*cm))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 5 — Actionable Recommendations (priority-coded cards)
+    # ══════════════════════════════════════════════════════════════════════
+    recs = _parse_flex_data(
+        data.get("structured_recs") or data.get("recommendations", [])
+    )
     if recs:
-        story.append(Paragraph("3. Recommendations", h2_style))
-        if isinstance(recs, list):
-            for i, rec in enumerate(recs, 1):
-                text = rec.get("action", str(rec)) if isinstance(rec, dict) else str(rec)
-                story.append(Paragraph(f"<b>{i}.</b> {text}", body_style))
-        else:
-            story.append(Paragraph(str(recs), body_style))
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(_divider())
+        story.append(_h("Actionable Recommendations", 2))
+        story.append(_body(
+            "Recommendations are ranked by priority. Each card shows the action, "
+            "expected impact, and suggested deadline."
+        ))
+        story.append(Spacer(1, 0.15*cm))
 
-    # 5. Trade-Off Analysis Section
+        PRIORITY_META = {
+            "high":   ("HIGH",   HIGH_COLOR,  colors.HexColor("#FEF2F2")),
+            "medium": ("MEDIUM", MED_COLOR,   colors.HexColor("#FFFBEB")),
+            "low":    ("LOW",    LOW_COLOR,   colors.HexColor("#F0FDF4")),
+        }
+
+        def _rec_card(idx, rec):
+            if not isinstance(rec, dict):
+                rec = {"title": f"Recommendation {idx}", "action": str(rec),
+                       "priority": "medium", "category": "savings",
+                       "impact": "—", "deadline": "—", "rationale": ""}
+            priority     = rec.get("priority", "medium").lower()
+            category     = rec.get("category", "savings").lower()
+            title        = rec.get("title", f"Action {idx}")
+            action       = rec.get("action", "")
+            impact       = rec.get("impact", "")
+            deadline     = rec.get("deadline", "")
+            rationale    = rec.get("rationale", "")
+
+            p_label, p_color, p_bg = PRIORITY_META.get(priority, PRIORITY_META["medium"])
+            cat_color = CAT_COLORS.get(category, colors.HexColor("#6B7280"))
+            cat_icon  = CAT_ICONS.get(category, "●")
+
+            # Header row: priority badge | title | category tag
+            header = Table([[
+                Paragraph(f"<b><font color='white'> {p_label} </font></b>",
+                          ParagraphStyle("PBadge", fontSize=7, leading=9, alignment=1)),
+                Paragraph(f"<b>{idx}. {title}</b>",
+                          ParagraphStyle("RTitle", fontSize=10, leading=12, textColor=DARK)),
+                Paragraph(f"<font color='white'><b> {cat_icon} {category.upper()} </b></font>",
+                          ParagraphStyle("CBadge", fontSize=7, leading=9, alignment=2)),
+            ]], colWidths=[1.5*cm, 12.5*cm, 2.5*cm])
+            header.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (0,0), p_color),
+                ("BACKGROUND",    (1,0), (1,0), p_bg),
+                ("BACKGROUND",    (2,0), (2,0), cat_color),
+                ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+                ("TOPPADDING",    (0,0), (-1,-1), 5),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+                ("LEFTPADDING",   (0,0), (-1,-1), 6),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+            ]))
+
+            # Body rows
+            body_rows = []
+            if action:
+                body_rows.append([
+                    Paragraph("<b>Action</b>",
+                              ParagraphStyle("BL", fontSize=8.5, textColor=MID)),
+                    Paragraph(action,
+                              ParagraphStyle("BV", fontSize=8.5, leading=12, textColor=DARK)),
+                ])
+            if impact:
+                body_rows.append([
+                    Paragraph("<b>Impact</b>",
+                              ParagraphStyle("BL", fontSize=8.5, textColor=MID)),
+                    Paragraph(f"<font color='#16A34A'><b>{impact}</b></font>",
+                              ParagraphStyle("BV", fontSize=8.5, textColor=DARK)),
+                ])
+            if deadline:
+                body_rows.append([
+                    Paragraph("<b>Deadline</b>",
+                              ParagraphStyle("BL", fontSize=8.5, textColor=MID)),
+                    Paragraph(deadline,
+                              ParagraphStyle("BV", fontSize=8.5, textColor=DARK)),
+                ])
+            if rationale:
+                body_rows.append([
+                    Paragraph("<i>Why</i>",
+                              ParagraphStyle("BL", fontSize=8, textColor=colors.HexColor("#9CA3AF"))),
+                    Paragraph(f"<i>{rationale}</i>",
+                              ParagraphStyle("BV", fontSize=8, leading=11,
+                                             textColor=colors.HexColor("#6B7280"))),
+                ])
+
+            body_tbl = Table(body_rows, colWidths=[2*cm, 14.5*cm])
+            body_tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,-1), p_bg),
+                ("TOPPADDING",    (0,0), (-1,-1), 3),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+                ("LEFTPADDING",   (0,0), (-1,-1), 6),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+                ("LINEBELOW",     (0,0), (-1,-2), 0.3, BORDER),
+            ]))
+
+            outer = Table([[header], [body_tbl]], colWidths=[16.5*cm])
+            outer.setStyle(TableStyle([
+                ("BOX",           (0,0), (-1,-1), 0.8, p_color),
+                ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 0),
+                ("TOPPADDING",    (0,0), (-1,-1), 0),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 0),
+            ]))
+            return KeepTogether([outer, Spacer(1, 0.25*cm)])
+
+        # Sort: high → medium → low
+        priority_order = {"high": 0, "medium": 1, "low": 2}
+        if isinstance(recs, list) and recs and isinstance(recs[0], dict):
+            recs_sorted = sorted(
+                recs,
+                key=lambda r: priority_order.get(r.get("priority", "medium").lower(), 1)
+            )
+        else:
+            recs_sorted = recs if isinstance(recs, list) else [recs]
+
+        for i, rec in enumerate(recs_sorted, 1):
+            story.append(_rec_card(i, rec))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 6 — Trade-off Comparison Tables
+    # ══════════════════════════════════════════════════════════════════════
     tradeoffs = _parse_flex_data(data.get("tradeoffs") or data.get("tradeoff_analysis", []))
-    if tradeoffs:
-        story.append(Paragraph("4. Trade-Off Analysis", h2_style))
-        if isinstance(tradeoffs, list):
-            for i, item in enumerate(tradeoffs, 1):
-                if isinstance(item, dict):
-                    strategy = item.get("strategy", f"Strategy {i}")
-                    benefits = item.get("benefits", "")
-                    drawbacks = item.get("tradeoffs") or item.get("drawbacks", "")
-                    story.append(Paragraph(f"<b>Strategy {i}: {strategy}</b>", body_style))
-                    if benefits:
-                        story.append(Paragraph(f"   • <i>Benefits:</i> {benefits}", body_style))
-                    if drawbacks:
-                        story.append(Paragraph(f"   • <i>Drawbacks / Trade-offs:</i> {drawbacks}", body_style))
-                else:
-                    story.append(Paragraph(f"• {item}", body_style))
-        else:
-            story.append(Paragraph(str(tradeoffs), body_style))
-        story.append(Spacer(1, 0.3 * cm))
+    if tradeoffs and isinstance(tradeoffs, list) and tradeoffs:
+        story.append(_divider())
+        story.append(_h("Strategic Trade-off Analysis", 2))
+        story.append(_body(
+            "For each recommendation, two alternative strategies are compared. "
+            "The recommended option is highlighted."
+        ))
+        story.append(Spacer(1, 0.15*cm))
 
-    # 6. Market Insights Section
+        for t in tradeoffs:
+            if not isinstance(t, dict):
+                continue
+            for_rec = t.get("for_recommendation", "Recommendation")
+            sa = t.get("strategy_a", {})
+            sb = t.get("strategy_b", {})
+            recommended = t.get("recommended", "a").lower()
+            reason = t.get("reason", "")
+
+            story.append(KeepTogether([
+                _body(f"<b>↳ {for_rec}</b>"),
+                Table(
+                    [
+                        [
+                            Paragraph("<b>Option</b>",   ParagraphStyle("TH", fontSize=8, textColor=colors.white)),
+                            Paragraph("<b>Description</b>", ParagraphStyle("TH", fontSize=8, textColor=colors.white)),
+                            Paragraph("<b>Monthly Cost</b>", ParagraphStyle("TH", fontSize=8, textColor=colors.white)),
+                            Paragraph("<b>Benefit</b>",  ParagraphStyle("TH", fontSize=8, textColor=colors.white)),
+                            Paragraph("<b>Risk</b>",     ParagraphStyle("TH", fontSize=8, textColor=colors.white)),
+                        ],
+                        [
+                            Paragraph(f"{'✅ ' if recommended=='a' else ''}A: {sa.get('name','')}",
+                                      ParagraphStyle("TC", fontSize=8, textColor=DARK,
+                                                     backColor=colors.HexColor("#F0FDF4") if recommended=="a" else colors.white)),
+                            Paragraph(sa.get("description",""), ParagraphStyle("TC", fontSize=8, leading=11)),
+                            Paragraph(f"₹{sa.get('monthly_cost',0):,}", ParagraphStyle("TC", fontSize=8)),
+                            Paragraph(sa.get("benefit",""),      ParagraphStyle("TC", fontSize=8, textColor=LOW_COLOR)),
+                            Paragraph(sa.get("risk",""),         ParagraphStyle("TC", fontSize=8, textColor=HIGH_COLOR)),
+                        ],
+                        [
+                            Paragraph(f"{'✅ ' if recommended=='b' else ''}B: {sb.get('name','')}",
+                                      ParagraphStyle("TC", fontSize=8, textColor=DARK,
+                                                     backColor=colors.HexColor("#F0FDF4") if recommended=="b" else colors.white)),
+                            Paragraph(sb.get("description",""), ParagraphStyle("TC", fontSize=8, leading=11)),
+                            Paragraph(f"₹{sb.get('monthly_cost',0):,}", ParagraphStyle("TC", fontSize=8)),
+                            Paragraph(sb.get("benefit",""),      ParagraphStyle("TC", fontSize=8, textColor=LOW_COLOR)),
+                            Paragraph(sb.get("risk",""),         ParagraphStyle("TC", fontSize=8, textColor=HIGH_COLOR)),
+                        ],
+                    ],
+                    colWidths=[3.2*cm, 6*cm, 2.5*cm, 2.8*cm, 2*cm]
+                ,
+                style=TableStyle([
+                    ("BACKGROUND",    (0,0), (-1,0), colors.HexColor("#374151")),
+                    ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.HexColor("#F9FAFB"), colors.white]),
+                    ("GRID",          (0,0), (-1,-1), 0.4, BORDER),
+                    ("FONTSIZE",      (0,0), (-1,-1), 8),
+                    ("TOPPADDING",    (0,0), (-1,-1), 4),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+                    ("LEFTPADDING",   (0,0), (-1,-1), 5),
+                ])),
+                _body(f"<i>Recommended: Option {recommended.upper()} — {reason}</i>"),
+                Spacer(1, 0.3*cm),
+            ]))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 7 — Market Insights
+    # ══════════════════════════════════════════════════════════════════════
     market = data.get("market_insights") or data.get("market_context", "")
     if market:
-        story.append(Paragraph("5. Market Insights", h2_style))
-        story.append(Paragraph(str(market)[:1000], body_style))
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(_divider())
+        story.append(_h("Market Insights", 2))
+        story.append(_body(str(market)[:1200]))
+        story.append(Spacer(1, 0.3*cm))
 
-    # 7. Portfolio Visualization Section (Pie & Bar Charts)
-    if isinstance(calc, dict) and calc:
-        story.append(Paragraph("6. Portfolio Visualization Section", h2_style))
-        pie_img_path = os.path.join(PDF_OUTPUT_DIR, f"chart_pie_{report_id}.png")
-        bar_img_path = os.path.join(PDF_OUTPUT_DIR, f"chart_bar_{report_id}.png")
-
-        _generate_pie_chart(calc, pie_img_path)
-        _generate_bar_chart(calc, bar_img_path)
-
-        if os.path.exists(pie_img_path) and os.path.exists(bar_img_path):
-            pie_img = Image(pie_img_path, width=8.0 * cm, height=6.0 * cm)
-            bar_img = Image(bar_img_path, width=9.0 * cm, height=6.0 * cm)
-
-            charts_table = Table([[pie_img, bar_img]], colWidths=[8.5 * cm, 9.0 * cm])
-            charts_table.setStyle(TableStyle([
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ]))
-            story.append(charts_table)
-            story.append(Spacer(1, 0.3 * cm))
-
-    # 8. Closing Summary Section
-    story.append(Paragraph("7. Closing Summary", h2_style))
-    closing_text = (
-        f"<b>Overall Financial Health & Key Observations:</b> {user_name}'s financial portfolio shows a strong surplus foundation. "
-        f"Follow the recommended action items above to maintain high savings efficiency while optimizing long-term wealth growth."
-    )
-    story.append(Paragraph(closing_text, body_style))
-    story.append(Spacer(1, 0.4 * cm))
-
-    # 9. Disclaimer Section
+    # ══════════════════════════════════════════════════════════════════════
+    # SECTION 8 — Disclaimer footer
+    # ══════════════════════════════════════════════════════════════════════
+    story.append(_divider())
     story.append(Paragraph(
-        "<i>Disclaimer: This report is generated by SpendWise AI for informational purposes. "
-        "Please consult a certified financial advisor before executing investment strategies.</i>",
-        ParagraphStyle("Footer", parent=body_style, fontSize=7.5, textColor=colors.grey)
+        "<i>Disclaimer: This report is generated by SpendWise AI for informational purposes only. "
+        "Please consult a SEBI-registered financial advisor before executing any investment strategy.</i>",
+        ParagraphStyle("Footer", parent=styles["BodyText"], fontSize=7.5, textColor=colors.grey, leading=10)
     ))
 
     doc.build(story)
 
-    # Store summary in past_reports collection
-    summary_text = (
-        f"Report for {user_name} ({person_type}). Monthly Surplus: ₹{calc.get('monthly_surplus', 0):,.0f}, "
-        f"Savings Rate: {calc.get('savings_rate_pct', 0):.1f}%, DTI: {calc.get('dti_ratio_pct', 0):.1f}%."
-    )
+    # Store summary in past_reports ChromaDB collection
+    if isinstance(calc, dict):
+        summary_text = (
+            f"Report for {user_name} ({person_type}). "
+            f"Surplus: ₹{calc.get('monthly_surplus',0):,.0f}, "
+            f"Savings: {calc.get('savings_rate_pct',0):.1f}%, "
+            f"DTI: {calc.get('dti_ratio_pct',0):.1f}%."
+        )
+    else:
+        summary_text = f"Report for {user_name} ({person_type})."
     add_past_report(
-        user_id=user_id,
-        report_id=report_id,
-        summary=summary_text,
-        filepath=filepath,
+        user_id=user_id, report_id=report_id,
+        summary=summary_text, filepath=filepath,
         metadata={"user_name": user_name, "person_type": person_type}
     )
-
     return filepath

@@ -77,7 +77,7 @@ def past_reports_collection():
 # ---------------------------------------------------------------------------
 def upsert_user_profile(user_id, profile_data, session_id="default"):
     """
-        Normalizes profile, creates embeddings and metadata, stores in ChromaDB.
+        Creates embeddings and metadata, stores in ChromaDB.
         Supports update and versioning.
     """
 
@@ -158,12 +158,33 @@ def add_past_report(user_id: str, report_id: str, summary: str, filepath: str, m
 # ---------------------------------------------------------------------------
 # Helper: Generic Query across collections
 # ---------------------------------------------------------------------------
-def query_collection(collection, query_text: str, n_results: int = 5) -> List[str]:
+def query_collection(
+    collection,
+    query_text: str,
+    n_results: int = 5,
+    where: dict = None,
+    include_metadata: bool = False,
+) -> list:
+    """
+    Query a ChromaDB collection.
+    - where: optional ChromaDB metadata filter, e.g. {"category": {"$eq": "tax"}}
+    - include_metadata: if True returns list of {"text": ..., "metadata": ...} dicts;
+                        if False (default) returns list of plain text strings (backward compat)
+    """
     try:
         embedding = get_embed_model().embed_query(query_text)
-        results = collection.query(query_embeddings=[embedding], n_results=n_results)
-        if results and results.get("documents") and len(results["documents"]) > 0:
-            return results["documents"][0]
+        kwargs = dict(query_embeddings=[embedding], n_results=n_results,
+                      include=["documents", "metadatas"])
+        if where:
+            kwargs["where"] = where
+        results = collection.query(**kwargs)
+        docs      = results.get("documents", [[]])[0]
+        metas     = results.get("metadatas", [[]])[0]
+        if not docs:
+            return []
+        if include_metadata:
+            return [{"text": d, "metadata": m} for d, m in zip(docs, metas)]
+        return docs
     except Exception as e:
         logger.error(f"Error querying collection: {e}")
     return []
