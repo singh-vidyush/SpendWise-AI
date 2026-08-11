@@ -96,8 +96,8 @@ def chat(request: ChatRequest):
     user_id_str = str(request.user_id)
     profile = get_user_profile(user_id_str)
 
-    fin = profile.get("financial_profile", {})
-    debt = fin.get("debt_details", {})
+    fin  = profile.get("financial_profile", {})
+    debt = fin.get("debt_details", {}) or {}
 
     try:
         state = run_planning_pipeline(
@@ -105,6 +105,9 @@ def chat(request: ChatRequest):
             user_name=profile.get("user_name", "User"),
             person_type=fin.get("persona", "Salaried"),
             monthly_income=float(fin.get("monthly_income", 0.0)),
+            essential_expenses=float(fin.get("essential_expenses", 0.0)),
+            non_essential_expenses=float(fin.get("non_essential_expenses", 0.0)),
+            current_savings=float(fin.get("current_savings", 0.0)),
             house_emi=float(debt.get("monthly_emi", 0.0)),
             chat_query=request.message,
             profile_dict=profile,
